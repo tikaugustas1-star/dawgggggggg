@@ -66,7 +66,7 @@ Virtuvės ir admin API apsaugoti rolėmis.
 
 ## Paleidimas internete (Render)
 1. Repo turi `render.yaml` (Blueprint) ir `Dockerfile`.
-2. Atidarykite `https://render.com/deploy?repo=<šio repo URL>` arba Render → New → Blueprint ir pasirinkite repo.
+2. Spauskite [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/tikaugustas1-star/dawgggggggg) arba Render → New → Blueprint ir pasirinkite šį repo.
 3. Render pats sugeneruos atsitiktinius `ADMIN_PASSWORD`, `STAFF_PASSWORD` ir `CUSTOMER_PASSWORD` (juos rasite Render → Environment).
    `.env.example` slaptažodžiai yra vieši, todėl produkcijoje jie atmetami.
 4. Adresas bus `https://food-order-app-xxxx.onrender.com`.
