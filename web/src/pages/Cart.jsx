@@ -133,6 +133,7 @@ export default function Cart() {
                     <b className="ell">{it?.name || 'Prekė'}</b>
                     <span className="k ell" style={{ display: 'block' }}>{ql?.options?.length ? ql.options.map((o) => o.name).join(', ') : (l.note ? `„${l.note}“` : 'Be pakeitimų')}</span>
                     <span className="small" style={{ fontWeight: 700 }}>{ql ? eur(ql.total) : '…'}</span>
+                    {ql?.deal && <span className="tiny okc" style={{ display: 'block', fontWeight: 600 }}>{ql.deal.title} {ql.deal.badge} · sutaupote {eur(ql.deal.saved)}</span>}
                   </div>
                   <Stepper small value={l.qty} onChange={(v) => setQty(l.key, v)} />
                 </div></div>

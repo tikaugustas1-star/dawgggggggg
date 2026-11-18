@@ -4,7 +4,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { openDb, tx, kvGet, kvSet, loadBrand, ROOT } from './db.js';
-import { seed } from './seed.js';
+import { seed, seedDeals } from './seed.js';
 import { hashPassword, verifyPassword, createSession, destroySession, sessionMiddleware, requireUser, requireRole, rateLimit } from './auth.js';
 import { subscribe, publish } from './events.js';
 import { initPayments, mode as paymentMode, createCheckout, verifyStripe, webhookEvent } from './payments.js';
@@ -16,9 +16,11 @@ import { buildAssociations, suggest } from './algorithms/upsell.js';
 import { canTransition, ACTIVE } from './algorithms/orderState.js';
 import { rebuildCart } from './algorithms/reorder.js';
 import { isOpen, daypart } from './algorithms/time.js';
+import { activeDealFor, applyDeal, dealState, dealBadge } from './algorithms/deals.js';
 
 export async function createApp({ db = openDb(), brand = loadBrand() } = {}) {
   seed(db);
+  seedDeals(db);
   await initPayments();
   const app = express();
   app.set('trust proxy', 1);
@@ -60,8 +62,16 @@ export async function createApp({ db = openDb(), brand = loadBrand() } = {}) {
     promo: db.prepare('SELECT * FROM promos WHERE code = ? COLLATE NOCASE'),
     reward: db.prepare('SELECT * FROM rewards WHERE id = ?'),
     userOrderCount: db.prepare(`SELECT COUNT(*) n FROM orders WHERE user_id = ? AND status NOT IN ('cancelled','pending_payment')`),
+    deals: db.prepare('SELECT * FROM deals WHERE active = 1'),
     phoneOrderCount: db.prepare(`SELECT COUNT(*) n FROM orders WHERE customer_phone = ? AND status NOT IN ('cancelled','pending_payment')`),
   };
+
+  // Public view of an item's deal at `at` (null when none applies).
+  function dealView(item, deals, at = new Date()) {
+    const d = activeDealFor(item, deals, at);
+    if (!d) return null;
+    return { id: d.id, title: d.title, badge: dealBadge(d), price: applyDeal(item.price_cents, d), until: d.end_time || null };
+  }
 
   function storeView(s, now = new Date()) {
     const hours = JSON.parse(s.hours_json);
@@ -136,11 +146,17 @@ export async function createApp({ db = openDb(), brand = loadBrand() } = {}) {
     const unavailable = unavailableFor(store.id, menu);
     if (!Array.isArray(body.lines) || !body.lines.length) throw new PricingError('Krepšelis tuščias', 'EMPTY');
     if (body.lines.length > 40) throw new PricingError('Per daug eilučių', 'TOO_MANY');
+    // deals are priced at the time the food is made: now for ASAP, the slot time for scheduled orders
+    const dealAt = body.scheduledFor && !Number.isNaN(Date.parse(body.scheduledFor)) ? new Date(body.scheduledFor) : new Date();
+    const deals = q.deals.all();
     const lines = body.lines.map((l) => {
       const it = menu.itemMap.get(Number(l.itemId));
       if (it && unavailable.has(it.id)) throw new PricingError(`${it.name} šiuo metu neturime`, 'SOLD_OUT');
-      const p = priceLine(it, menu.groupsByItem.get(it?.id) || [], l.optionIds || [], Number(l.qty));
-      return { ...p, itemId: it.id, name: it.name, prep_min: it.prep_min, note: String(l.note || '').slice(0, 140) };
+      const deal = it ? activeDealFor(it, deals, dealAt) : null;
+      const base = it ? applyDeal(it.price_cents, deal) : 0;
+      const p = priceLine(it && { ...it, price_cents: base }, menu.groupsByItem.get(it?.id) || [], l.optionIds || [], Number(l.qty));
+      return { ...p, itemId: it.id, name: it.name, prep_min: it.prep_min, note: String(l.note || '').slice(0, 140),
+        deal: deal ? { title: deal.title, badge: dealBadge(deal), saved: (it.price_cents - base) * p.qty } : null };
     });
 
     const fulfillment = body.fulfillment === 'delivery' ? 'delivery' : 'pickup';
@@ -180,7 +196,7 @@ export async function createApp({ db = openDb(), brand = loadBrand() } = {}) {
   }
 
   const publicQuote = (qt) => ({
-    lines: qt.lines.map((l) => ({ itemId: l.itemId, name: l.name, qty: l.qty, unit: l.unit, total: l.total, options: l.options })),
+    lines: qt.lines.map((l) => ({ itemId: l.itemId, name: l.name, qty: l.qty, unit: l.unit, total: l.total, options: l.options, deal: l.deal })),
     totals: qt.totals, promo: qt.promo, eta: { min: qt.eta.min, max: qt.eta.max }, slot: qt.slot,
     belowMin: qt.belowMin, minOrder: qt.minOrder, zoneVerified: qt.zoneVerified, distanceKm: qt.distanceKm,
   });
@@ -252,17 +268,31 @@ export async function createApp({ db = openDb(), brand = loadBrand() } = {}) {
 
   app.get('/api/menu', wrap((req, res) => {
     const storeId = Number(req.query.storeId) || 1;
-    const menu = loadMenu(); const un = unavailableFor(storeId, menu); const st = stats();
+    const menu = loadMenu(); const un = unavailableFor(storeId, menu); const st = stats(); const deals = q.deals.all();
     res.json({
       categories: menu.cats.map((c) => ({ id: c.id, name: c.name, slug: c.slug, role: c.role })),
       items: menu.items.filter((i) => i.active).map((i) => ({
         id: i.id, categoryId: i.category_id, name: i.name, description: i.description, price: i.price_cents,
         image: i.image, emoji: i.emoji, kcal: i.kcal, tags: JSON.parse(i.tags), allergens: JSON.parse(i.allergens),
-        soldOut: un.has(i.id), role: i.role, prepMin: i.prep_min, orders60d: st.global.get(i.id) || 0,
+        soldOut: un.has(i.id), role: i.role, prepMin: i.prep_min, orders60d: st.global.get(i.id) || 0, deal: dealView(i, deals),
         groups: (menu.groupsByItem.get(i.id) || []).map((g) => ({ id: g.id, name: g.name, min: g.min, max: g.max,
           options: g.options.map((o) => ({ id: o.id, name: o.name, delta: o.price_delta_cents, isDefault: !!o.is_default })) })),
       })),
     });
+  }));
+
+  // "Šiandienos pasiūlymai": deals still valid today (active or later today); if none are left, tomorrow's.
+  app.get('/api/deals/today', wrap((req, res) => {
+    const storeId = Number(req.query.storeId) || 1;
+    const menu = loadMenu(); const un = unavailableFor(storeId, menu); const deals = q.deals.all();
+    const build = (at, day) => deals.map((d) => ({ d, st: dealState(d, at), it: menu.itemMap.get(d.item_id) }))
+      .filter((x) => x.it && !un.has(x.it.id) && (day === 'tomorrow' ? x.st !== 'off' : ['active', 'upcoming'].includes(x.st)))
+      .map(({ d, st, it }) => ({ id: d.id, itemId: it.id, title: d.title, badge: dealBadge(d), price: applyDeal(it.price_cents, d), was: it.price_cents,
+        from: d.start_time, until: d.end_time, state: day === 'tomorrow' ? 'tomorrow' : st }))
+      .sort((a, b) => (a.state === 'active' ? 0 : 1) - (b.state === 'active' ? 0 : 1) || (b.was - b.price) - (a.was - a.price));
+    let list = build(new Date(), 'today'); let day = 'today';
+    if (!list.length) { list = build(new Date(Date.now() + 86400000), 'tomorrow'); day = 'tomorrow'; }
+    res.json({ day, deals: list });
   }));
 
   // "Tau" shelf: personalised ranking for the current daypart.
@@ -538,6 +568,29 @@ export async function createApp({ db = openDb(), brand = loadBrand() } = {}) {
   app.patch('/api/admin/promos/:code', admin, (req, res) => {
     db.prepare('UPDATE promos SET active = ? WHERE code = ?').run(req.body.active ? 1 : 0, req.params.code);
     res.json(q.promo.get(req.params.code));
+  });
+
+  app.get('/api/admin/deals', admin, (_req, res) => res.json(db.prepare(`SELECT d.*, i.name item_name, i.price_cents FROM deals d
+    JOIN items i ON i.id = d.item_id ORDER BY d.active DESC, d.id`).all()));
+  app.post('/api/admin/deals', admin, wrap((req, res) => {
+    const b = req.body; const DAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+    const hm = (t) => (t ? (/^([01]\d|2[0-3]):[0-5]\d$/.test(t) ? t : null) : null);
+    if (!db.prepare('SELECT 1 FROM items WHERE id = ?').get(Number(b.item_id))) return res.status(400).json({ error: 'Pasirinkite patiekalą' });
+    if (!['percent', 'fixed'].includes(b.kind)) return res.status(400).json({ error: 'Blogas tipas' });
+    const value = Math.round(Number(b.value));
+    if (!(value > 0) || (b.kind === 'percent' && value > 90)) return res.status(400).json({ error: 'Nuolaida: 1–90 % arba suma > 0' });
+    const title = String(b.title || '').trim().slice(0, 40);
+    if (title.length < 3) return res.status(400).json({ error: 'Įveskite pavadinimą' });
+    const days = Array.isArray(b.days) && b.days.length && b.days.length < 7 ? b.days.filter((d) => DAYS.includes(d)) : null;
+    if ((b.start_time && !hm(b.start_time)) || (b.end_time && !hm(b.end_time))) return res.status(400).json({ error: 'Laikas formatu HH:MM' });
+    if (hm(b.start_time) && hm(b.end_time) && b.start_time >= b.end_time) return res.status(400).json({ error: 'Pabaiga turi būti po pradžios' });
+    const id = Number(db.prepare('INSERT INTO deals(item_id, kind, value, title, days, start_time, end_time) VALUES(?,?,?,?,?,?,?)')
+      .run(Number(b.item_id), b.kind, value, title, days ? JSON.stringify(days) : null, hm(b.start_time), hm(b.end_time)).lastInsertRowid);
+    res.status(201).json(db.prepare('SELECT * FROM deals WHERE id = ?').get(id));
+  }));
+  app.patch('/api/admin/deals/:id', admin, (req, res) => {
+    db.prepare('UPDATE deals SET active = ? WHERE id = ?').run(req.body.active ? 1 : 0, Number(req.params.id));
+    res.json(db.prepare('SELECT * FROM deals WHERE id = ?').get(Number(req.params.id)));
   });
 
   app.patch('/api/admin/stores/:id', admin, wrap((req, res) => {

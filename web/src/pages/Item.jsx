@@ -33,7 +33,8 @@ export default function Item() {
   if (!menu) return <div className="detail"><div className="skeleton" style={{ height: 360, borderRadius: 0 }} /></div>;
   if (!item) return <div className="detail page"><h2>Patiekalas nerastas</h2><Link className="btn" to="/menu">Į meniu</Link></div>;
 
-  const unit = item.price + item.groups.flatMap((g) => g.options).filter((o) => sel.has(o.id)).reduce((s, o) => s + o.delta, 0);
+  const base = item.deal ? item.deal.price : item.price;
+  const unit = base + item.groups.flatMap((g) => g.options).filter((o) => sel.has(o.id)).reduce((s, o) => s + o.delta, 0);
   const cat = menu.categories.find((c) => c.id === item.categoryId);
 
   function toggle(g, o) {
@@ -78,6 +79,13 @@ export default function Item() {
             {item.orders60d > 0 && <span className="link" style={{ textDecoration: 'underline' }}>{item.orders60d} užsakymai per 60 d.</span>}
           </div>
         </div>
+
+        {item.deal && (
+          <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+            <span className="offer-pill">{item.deal.badge} · {item.deal.title}</span>
+            <span className="small muted">{item.deal.until ? `galioja iki ${item.deal.until}` : 'galioja visą dieną'} · <s>{eur(item.price)}</s> → <b style={{ color: 'var(--ink)' }}>{eur(item.deal.price)}</b></span>
+          </div>
+        )}
 
         <div className="col" style={{ gap: 6 }}>
           <p className={`muted ${more ? '' : 'clamp'}`} style={{ margin: 0, fontSize: 14 }}>

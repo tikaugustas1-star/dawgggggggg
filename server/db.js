@@ -112,6 +112,16 @@ export function migrate(db) {
     status TEXT NOT NULL, at TEXT NOT NULL
   );
   CREATE TABLE IF NOT EXISTS kv (k TEXT PRIMARY KEY, v TEXT NOT NULL);
+  CREATE TABLE IF NOT EXISTS deals (
+    id INTEGER PRIMARY KEY, item_id INTEGER NOT NULL REFERENCES items(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL,                  -- percent | fixed
+    value INTEGER NOT NULL,              -- % or cents
+    title TEXT NOT NULL,                 -- e.g. "Pietų pasiūlymas"
+    days TEXT,                           -- JSON ["mon",...] or NULL = every day
+    start_time TEXT, end_time TEXT,      -- 'HH:MM' store-local, NULL = whole day
+    starts_on TEXT, ends_on TEXT,        -- 'YYYY-MM-DD', NULL = open-ended
+    active INTEGER NOT NULL DEFAULT 1
+  );
   `);
   // additive migrations for existing databases
   const cols = (t) => new Set(db.prepare(`PRAGMA table_info(${t})`).all().map((c) => c.name));

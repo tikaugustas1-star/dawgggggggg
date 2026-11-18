@@ -7,7 +7,6 @@ import { Photo, Sheet, Icon, ProductCard, FavButton, sized } from '../components
 import { hoursStatus } from './Locations.jsx';
 
 const GREET = { morning: 'Labas rytas', lunch: 'Laba diena', afternoon: 'Laba diena', evening: 'Labas vakaras' };
-const SHELF = { morning: 'Rytais renkasi', lunch: 'Populiaru per pietus', afternoon: 'Popietei', evening: 'Šį vakarą' };
 
 /** Store + pickup/delivery chooser, opened from a compact line. */
 export function StoreSheet({ onClose }) {
@@ -95,12 +94,14 @@ export default function Home() {
   const { replace } = useCart();
   const nav = useNavigate();
   const [rec, setRec] = useState(null);
+  const [offers, setOffers] = useState(null);
   const [last, setLast] = useState(null);
   const [cat, setCat] = useState(null);
   const [q, setQ] = useState('');
   const [storeOpen, setStoreOpen] = useState(false);
 
   useEffect(() => { api.get(`/api/recommendations?storeId=${storeId}`).then(setRec).catch(() => {}); }, [storeId, me.user?.id]);
+  useEffect(() => { api.get(`/api/deals/today?storeId=${storeId}`).then(setOffers).catch(() => setOffers({ day: 'today', deals: [] })); }, [storeId, menu]);
   useEffect(() => {
     if (!me.user) return setLast(null);
     api.get('/api/me/orders').then((os) => setLast(os.find((o) => o.status === 'completed') || os[0] || null)).catch(() => {});
@@ -124,7 +125,8 @@ export default function Home() {
     nav('/cart');
   }
 
-  const recItems = (rec?.items || []).map((r) => itemsById.get(r.id)).filter(Boolean);
+  // bestsellers: real sales over the last 60 days, in order
+  const best = useMemo(() => (menu?.items || []).filter((i) => i.orders60d > 0).sort((a, b) => b.orders60d - a.orders60d).slice(0, 10), [menu]);
   const favs = (me.favorites || []).map((id) => itemsById.get(id)).filter(Boolean);
   const nextReward = me.rewards?.find((r) => r.cost_points > (me.user?.points || 0)) || me.rewards?.[me.rewards.length - 1];
   const first = me.user?.name?.split(' ')[0];
@@ -176,12 +178,23 @@ export default function Home() {
         )}
 
         <section className="col" style={{ gap: 14 }}>
-          <div className="sec-head"><h2>{rec?.personalized ? 'Tau' : SHELF[dp]}</h2><Link to="/menu" className="link">Visas meniu</Link></div>
-          <div className="hscroll">
-            {!rec && [0, 1].map((k) => <div key={k} className="skeleton" style={{ width: 236, height: 290 }} />)}
-            {recItems.map((it) => <ProductCard key={it.id} item={it} />)}
+          <div className="sec-head">
+            <h2>{offers?.day === 'tomorrow' ? 'Rytojaus pasiūlymai' : 'Šiandienos pasiūlymai'}</h2>
+            <Link to="/menu" className="link">Visas meniu</Link>
           </div>
+          <div className="hscroll">
+            {!offers && [0, 1].map((k) => <div key={k} className="skeleton" style={{ width: 236, height: 290 }} />)}
+            {offers?.deals.map((o) => <ProductCard key={o.id} item={itemsById.get(o.itemId)} offer={o} />)}
+          </div>
+          {offers && !offers.deals.length && <p className="small muted" style={{ margin: 0 }}>Šiandien pasiūlymų nebėra. Užsukite rytoj!</p>}
         </section>
+
+        {best.length > 0 && (
+          <section className="col" style={{ gap: 14 }}>
+            <div className="sec-head"><h2>Bestselleriai</h2><Link to="/menu" className="link">Visas meniu</Link></div>
+            <div className="hscroll">{best.map((it, i) => <ProductCard key={it.id} item={it} rank={i + 1} />)}</div>
+          </section>
+        )}
 
         {favs.length > 0 && (
           <section className="col" style={{ gap: 14 }}>

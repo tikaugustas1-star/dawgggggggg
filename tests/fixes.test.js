@@ -20,7 +20,7 @@ async function setup(t) {
   };
   const fries = db.prepare(`SELECT id FROM items WHERE name = 'Bulvytės'`).get().id;
   const size = db.prepare(`SELECT o.id FROM options o JOIN option_groups g ON g.id = o.group_id WHERE g.item_id = ? AND o.is_default = 1`).get(fries).id;
-  return { db, call, lines: [{ itemId: fries, qty: 4, optionIds: [size] }] };
+  return { db, call, lines: [{ itemId: fries, qty: 6, optionIds: [size] }] }; // stays above the 8 € minimum even with the fries deal
 }
 
 test('promo usage limit is enforced at placement, not only at quote time', async (t) => {

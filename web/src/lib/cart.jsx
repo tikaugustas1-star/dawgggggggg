@@ -53,5 +53,5 @@ export const useCart = () => useContext(Ctx);
 export function linePrice(line, item) {
   if (!item) return 0;
   const deltas = item.groups.flatMap((g) => g.options).filter((o) => line.optionIds.includes(o.id)).reduce((s, o) => s + o.delta, 0);
-  return (item.price + deltas) * line.qty;
+  return ((item.deal?.price ?? item.price) + deltas) * line.qty; // deal price for instant feedback; server quote decides
 }

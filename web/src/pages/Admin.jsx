@@ -5,6 +5,7 @@ import { Switch, Photo, Icon } from '../components/ui.jsx';
 import { StaffHead, StaffLogin } from '../components/staff.jsx';
 
 const TABS = [['stats', 'Apžvalga'], ['items', 'Meniu'], ['promos', 'Akcijos'], ['stores', 'Restoranai']];
+const WEEK = [['mon', 'Pr'], ['tue', 'An'], ['wed', 'Tr'], ['thu', 'Kt'], ['fri', 'Pn'], ['sat', 'Št'], ['sun', 'Sk']];
 const PROMO_KIND = { percent: 'Procentai', fixed: 'Fiksuota suma', free_delivery: 'Nemokamas pristatymas' };
 
 function Kpi({ k, v, sub, dark }) {
@@ -17,6 +18,8 @@ export default function Admin() {
   const [stats, setStats] = useState(null);
   const [items, setItems] = useState([]);
   const [promos, setPromos] = useState([]);
+  const [deals, setDeals] = useState([]);
+  const [nd, setNd] = useState({ item_id: '', kind: 'percent', value: 20, title: '', days: [], start_time: '', end_time: '' });
   const [q, setQ] = useState('');
   const [np, setNp] = useState({ code: '', kind: 'percent', value: 10, min_subtotal_cents: 0, label: '' });
   const [storeEdits, setStoreEdits] = useState({});
@@ -27,6 +30,7 @@ export default function Admin() {
     api.get('/api/admin/stats').then(setStats);
     api.get('/api/admin/items').then(setItems);
     api.get('/api/admin/promos').then(setPromos);
+    api.get('/api/admin/deals').then(setDeals);
     api.get('/api/stores').then(setStoreList);
   };
   useEffect(() => { if (ok) load(); }, [ok]);
@@ -45,6 +49,18 @@ export default function Admin() {
       await api.post('/api/admin/promos', body); setNp({ ...np, code: '', label: '' }); load(); notify('Kodas sukurtas');
     } catch (e2) { notify(e2.message, 'bad'); }
   }
+  async function createDeal(e) {
+    e.preventDefault();
+    try {
+      await api.post('/api/admin/deals', { ...nd, value: nd.kind === 'fixed' ? Math.round(Number(nd.value) * 100) : Number(nd.value) });
+      setNd({ ...nd, title: '' }); load(); refreshMenu(); notify('Pasiūlymas sukurtas');
+    } catch (e2) { notify(e2.message, 'bad'); }
+  }
+  const dealSchedule = (d) => {
+    const days = d.days ? JSON.parse(d.days).map((k) => WEEK.find((w) => w[0] === k)?.[1]).join(', ') : 'Kasdien';
+    return `${days} · ${d.start_time ? `${d.start_time}–${d.end_time || '24:00'}` : 'visą dieną'}`;
+  };
+
   async function saveStore(s, extra = {}) {
     try {
       const u = await api.patch(`/api/admin/stores/${s.id}`, { ...(storeEdits[s.id] || {}), ...extra });
@@ -144,6 +160,42 @@ export default function Admin() {
         )}
 
         {tab === 'promos' && (<>
+          <form className="panel" onSubmit={createDeal}>
+            <div className="panel-head"><h2>Naujas patiekalo pasiūlymas</h2><span className="small muted">Rodomas pradžioje „Šiandienos pasiūlymai“, kaina taikoma automatiškai</span></div>
+            <div className="formrow">
+              <label className="field">Patiekalas<select className="input" value={nd.item_id} onChange={(e) => setNd({ ...nd, item_id: e.target.value })} required>
+                <option value="">Pasirinkite…</option>{items.map((i) => <option key={i.id} value={i.id}>{i.name} · {eur(i.price_cents)}</option>)}</select></label>
+              <label className="field">Tipas<select className="input" value={nd.kind} onChange={(e) => setNd({ ...nd, kind: e.target.value })}>
+                <option value="percent">Procentai</option><option value="fixed">Suma, €</option></select></label>
+              <label className="field">{nd.kind === 'percent' ? 'Nuolaida, %' : 'Nuolaida, €'}<input className="input" style={{ width: 110 }} type="number" min="0" step={nd.kind === 'fixed' ? '0.01' : '1'} value={nd.value} onChange={(e) => setNd({ ...nd, value: e.target.value })} /></label>
+              <label className="field grow">Pavadinimas<input className="input" value={nd.title} onChange={(e) => setNd({ ...nd, title: e.target.value })} placeholder="pvz. Pietų pasiūlymas" required /></label>
+            </div>
+            <div className="formrow">
+              <div className="field"><span>Dienos (nieko = kasdien)</span>
+                <div className="row" style={{ gap: 6 }}>{WEEK.map(([k, l]) => {
+                  const on = nd.days.includes(k);
+                  return <button type="button" key={k} className={`chip sm${on ? ' on' : ''}`} onClick={() => setNd({ ...nd, days: on ? nd.days.filter((x) => x !== k) : [...nd.days, k] })}>{l}</button>;
+                })}</div></div>
+              <label className="field">Nuo<input className="input" style={{ width: 120 }} type="time" value={nd.start_time} onChange={(e) => setNd({ ...nd, start_time: e.target.value })} /></label>
+              <label className="field">Iki<input className="input" style={{ width: 120 }} type="time" value={nd.end_time} onChange={(e) => setNd({ ...nd, end_time: e.target.value })} /></label>
+              <button className="btn" style={{ height: 54 }}>Sukurti</button>
+            </div>
+          </form>
+          <section className="panel">
+            <div className="panel-head"><h2>Patiekalų pasiūlymai · {deals.length}</h2></div>
+            <div className="rows">
+              {deals.map((d) => (
+                <div key={d.id} className="rowcard" style={{ opacity: d.active ? 1 : 0.55 }}>
+                  <Photo item={itemsById.get(d.item_id)} w={54} h={46} className="thumb" />
+                  <div className="grow" style={{ minWidth: 0 }}><b className="small ell" style={{ display: 'block' }}>{d.title} · {d.item_name}</b>
+                    <span className="tiny muted">{dealSchedule(d)}</span></div>
+                  <span className="deal-badge" style={{ position: 'static' }}>{d.kind === 'percent' ? `−${d.value} %` : `−${eur(d.value)}`}</span>
+                  <Switch on={!!d.active} onClick={() => api.patch(`/api/admin/deals/${d.id}`, { active: !d.active }).then(() => { load(); refreshMenu(); })} label={`${d.title} aktyvus`} />
+                </div>
+              ))}
+            </div>
+          </section>
+
           <form className="panel" onSubmit={createPromo}>
             <div className="panel-head"><h2>Naujas nuolaidos kodas</h2></div>
             <div className="formrow">

@@ -80,23 +80,38 @@ export function FavButton({ itemId, glass, className = '' }) {
   );
 }
 
-/** Product card (reference "Upcoming tours" card). */
-export function ProductCard({ item, grid }) {
+/** When an offer applies, in words: "iki 15:00", "nuo 11:00", "rytoj nuo 08:00", "visą dieną". */
+export function offerWhen(o) {
+  if (o.state === 'tomorrow') return o.from ? `rytoj nuo ${o.from}` : 'rytoj visą dieną';
+  if (o.state === 'upcoming') return `šiandien nuo ${o.from}`;
+  return o.until ? `iki ${o.until}` : 'visą dieną';
+}
+
+/** Product card (reference "Upcoming tours" card). `offer` = today's deal entry, `rank` = bestseller position. */
+export function ProductCard({ item, grid, rank, offer }) {
   if (!item) return null;
+  const deal = offer || item.deal; // menu items carry a currently-active deal
+  const live = deal && (!offer || offer.state === 'active');
+  const price = live ? deal.price : item.price;
   return (
     <div className={`pcard${grid ? ' grid' : ''}`}>
-      <Link to={`/item/${item.id}`} className="stretch" aria-label={`${item.name}, ${eur(item.price)}`} />
+      <Link to={`/item/${item.id}`} className="stretch" aria-label={`${item.name}, ${eur(price)}${deal ? `, ${deal.title} ${deal.badge}` : ''}`} />
       <Photo item={item} w={grid ? 220 : 240} h={grid ? 220 : 180} out={item.soldOut} />
-      {item.soldOut && <span className="soldout">Išparduota</span>}
+      {item.soldOut ? <span className="soldout">Išparduota</span>
+        : rank ? <span className="rank-badge">#{rank}</span>
+        : deal ? <span className="deal-badge">{deal.badge}</span> : null}
       <FavButton itemId={item.id} className="fav" />
       <div className="body">
         <b className={grid ? '' : 'ell'}>{item.name}</b>
-        <span className="meta"><span>{Math.max(1, Math.round(item.prepMin))} min</span>{item.kcal && <><i />{item.kcal} kcal</>}</span>
+        {offer
+          ? <span className="meta"><span className="okc" style={{ fontWeight: 600 }}>{offer.title}</span><i />{offerWhen(offer)}</span>
+          : <span className="meta"><span>{Math.max(1, Math.round(item.prepMin))} min</span>{item.kcal && <><i />{item.kcal} kcal</>}{rank && deal && <><i /><span className="okc">{deal.badge}</span></>}</span>}
       </div>
       <div className="foot">
         <span className="row" style={{ gap: 6, minWidth: 0 }}>
-          <span className="price">{eur(item.price)}</span>
-          {item.orders60d > 0 && <span className="meta ell" title="Užsakymai per 60 d."><Icon.fire />{item.orders60d}</span>}
+          <span className="price">{eur(offer ? offer.price : price)}</span>
+          {deal ? <s className="meta">{eur(offer ? offer.was : item.price)}</s>
+            : item.orders60d > 0 && <span className="meta ell" title="Užsakymai per 60 d."><Icon.fire />{item.orders60d}</span>}
         </span>
         {!item.soldOut && <span className={`circle dark ${grid ? 'xs' : 'sm'}`} aria-hidden><Icon.arrow /></span>}
       </div>

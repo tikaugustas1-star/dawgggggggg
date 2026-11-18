@@ -92,12 +92,32 @@ function seedPassword(name) {
   return gen;
 }
 
+// Demo item deals (fictional brand). Mix of all-day and time-window offers so "today" is never empty.
+const DEALS = [
+  ['Bulvytės', 'fixed', 100, 'Bulvyčių diena', null, null, null],
+  ['Lašišos poke', 'percent', 15, 'Poke trečiadienis', ['wed'], null, null],
+  ['Teriyaki vištienos bowl', 'percent', 20, 'Pietų pasiūlymas', ['mon', 'tue', 'wed', 'thu', 'fri'], '11:00', '15:00'],
+  ['Kava su pienu', 'percent', 25, 'Rytinė kava', null, '08:00', '11:00'],
+  ['Smash burgeris', 'fixed', 200, 'Vakaro smash', null, '17:00', '21:00'],
+  ['Sūrio pyragas', 'percent', 20, 'Savaitgalio desertas', ['sat', 'sun'], null, null],
+  ['Naminis limonadas', 'percent', 30, 'Gaivus pasiūlymas', ['thu', 'fri', 'sat'], null, null],
+];
+export function seedDeals(db) {
+  if (db.prepare('SELECT COUNT(*) n FROM deals').get().n > 0) return false;
+  const ins = db.prepare('INSERT INTO deals(item_id, kind, value, title, days, start_time, end_time) VALUES(?,?,?,?,?,?,?)');
+  for (const [name, kind, value, title, days, from, to] of DEALS) {
+    const it = db.prepare('SELECT id FROM items WHERE name = ?').get(name);
+    if (it) ins.run(it.id, kind, value, title, days ? JSON.stringify(days) : null, from, to);
+  }
+  return true;
+}
+
 export function seed(db, { reset = false } = {}) {
   if (!reset && db.prepare('SELECT COUNT(*) n FROM items').get().n > 0) return false;
   const rand = rng(42);
   const pick = (arr) => arr[Math.floor(rand() * arr.length)];
   tx(db, () => {
-    db.exec(`DELETE FROM order_events; DELETE FROM order_items; DELETE FROM orders; DELETE FROM favorites; DELETE FROM sessions;
+    db.exec(`DELETE FROM deals; DELETE FROM order_events; DELETE FROM order_items; DELETE FROM orders; DELETE FROM favorites; DELETE FROM sessions;
       DELETE FROM users; DELETE FROM sold_out; DELETE FROM pairings; DELETE FROM options; DELETE FROM option_groups;
       DELETE FROM items; DELETE FROM categories; DELETE FROM stores; DELETE FROM promos; DELETE FROM rewards; DELETE FROM kv;`);
     const st = db.prepare(`INSERT INTO stores(name,address,lat,lng,phone,hours_json,delivery_radius_km,delivery_fee_cents,free_delivery_over_cents,min_order_cents,slot_capacity,prep_stations,image,about) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
@@ -179,6 +199,7 @@ export function seed(db, { reset = false } = {}) {
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   const db = openDb();
   const done = seed(db, { reset: process.argv.includes('--reset') });
+  seedDeals(db);
   console.log(done ? 'Seeded demo brand.' : 'Already seeded (use --reset).');
   if (!fs.existsSync(path.join(ROOT, 'data'))) fs.mkdirSync(path.join(ROOT, 'data'));
 }
