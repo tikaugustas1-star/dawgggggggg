@@ -146,7 +146,7 @@ export default function Order() {
           {o.deliveryFee > 0 && <div className="sum-row"><span>Pristatymas</span><span>{eur(o.deliveryFee)}</span></div>}
           {o.tip > 0 && <div className="sum-row"><span>Arbatpinigiai</span><span>{eur(o.tip)}</span></div>}
           <div className="sum-row total"><span>Iš viso</span><span>{eur(o.total)}</span></div>
-          <span className="tiny muted">{o.paymentMethod === 'card' ? (o.paymentStatus === 'paid' ? 'Apmokėta kortele' : 'Kortele') : 'Mokėsite atsiimdami'}
+          <span className="tiny muted">{o.paymentStatus === 'demo' ? 'DEMO mokėjimas (pinigai nenuskaičiuoti)' : o.paymentMethod === 'card' ? (o.paymentStatus === 'paid' ? 'Apmokėta kortele' : 'Kortele') : 'Mokėsite atsiimdami'}
             {o.pointsEarned > 0 && ` · +${o.pointsEarned} tšk. po įvykdymo`}</span>
         </section>
         {o.status === 'placed' && <button className="btn ghost" onClick={cancel}>Atšaukti užsakymą</button>}

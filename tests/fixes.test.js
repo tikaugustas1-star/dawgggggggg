@@ -32,7 +32,7 @@ test('promo usage limit is enforced at placement, not only at quote time', async
   assert.equal((await call('POST', `/api/orders/${a.body.order.token}/demo-pay`)).body.status, 'placed');
   const second = await call('POST', `/api/orders/${b.body.order.token}/demo-pay`);
   assert.equal(second.body.status, 'cancelled');
-  assert.equal(second.body.paymentStatus, 'refund_due', 'paid but unplaceable order is flagged for refund');
+  assert.equal(second.body.paymentStatus, 'demo', 'demo payment stays labelled demo (no real money to refund)');
   assert.equal(db.prepare(`SELECT used FROM promos WHERE code = 'VIENAS'`).get().used, 1);
 });
 

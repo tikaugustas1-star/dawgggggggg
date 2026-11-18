@@ -13,6 +13,8 @@ services:
         value: production
       - key: PAYMENTS_DEMO
         value: "1"
+      - key: DATA_ENCRYPTION_KEY   # encrypts personal data at rest; keep it, losing it makes that data unreadable
+        generateValue: true
       - key: ADMIN_EMAIL
         value: admin@demo.local
       - key: ADMIN_PASSWORD

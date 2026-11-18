@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import '../server/env.js';
 import { openDb } from '../server/db.js';
 import { createApp } from '../server/index.js';
+import { blind } from '../server/crypto.js';
 
 test('register requires terms; export and delete own data', async (t) => {
   const db = openDb(':memory:');
@@ -21,7 +22,7 @@ test('register requires terms; export and delete own data', async (t) => {
 
   assert.equal((await call('POST', '/api/auth/register', acct)).status, 400, 'terms must be accepted');
   assert.equal((await call('POST', '/api/auth/register', { ...acct, acceptTerms: true })).status, 201);
-  assert.ok(db.prepare('SELECT terms_accepted_at FROM users WHERE email = ?').get(acct.email).terms_accepted_at);
+  assert.ok(db.prepare('SELECT terms_accepted_at FROM users WHERE email = ?').get(blind('email', acct.email)).terms_accepted_at);
 
   const fries = db.prepare(`SELECT id FROM items WHERE name = 'Bulvytės'`).get().id;
   const size = db.prepare('SELECT o.id FROM options o JOIN option_groups g ON g.id = o.group_id WHERE g.item_id = ? AND o.is_default = 1').get(fries).id;
@@ -41,7 +42,7 @@ test('register requires terms; export and delete own data', async (t) => {
   assert.equal((await call('POST', '/api/me/delete', { password: 'neteisingas' })).status, 401);
   assert.equal((await call('POST', '/api/me/delete', { password: acct.password })).status, 200);
 
-  assert.equal(db.prepare('SELECT COUNT(*) n FROM users WHERE email = ?').get(acct.email).n, 0);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM users WHERE email = ?').get(blind('email', acct.email)).n, 0);
   const o = db.prepare('SELECT * FROM orders WHERE id = ?').get(ord.body.order.id);
   assert.deepEqual([o.user_id, o.customer_phone, o.address, o.notes], [null, '', null, null], 'contact details anonymised');
   assert.equal(o.total_cents, ord.body.order.total, 'amounts kept for accounting');

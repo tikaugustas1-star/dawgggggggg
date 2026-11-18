@@ -128,7 +128,13 @@ export function migrate(db) {
   const storeCols = cols('stores');
   if (!storeCols.has('image')) db.exec('ALTER TABLE stores ADD COLUMN image TEXT');
   if (!storeCols.has('about')) db.exec('ALTER TABLE stores ADD COLUMN about TEXT');
-  if (!cols('users').has('terms_accepted_at')) db.exec('ALTER TABLE users ADD COLUMN terms_accepted_at TEXT');
+  const userCols = cols('users');
+  if (!userCols.has('terms_accepted_at')) db.exec('ALTER TABLE users ADD COLUMN terms_accepted_at TEXT');
+  if (!userCols.has('email_enc')) db.exec('ALTER TABLE users ADD COLUMN email_enc TEXT');       // encrypted email; `email` holds its blind index
+  if (!userCols.has('failed_logins')) db.exec('ALTER TABLE users ADD COLUMN failed_logins INTEGER NOT NULL DEFAULT 0');
+  if (!userCols.has('locked_until')) db.exec('ALTER TABLE users ADD COLUMN locked_until INTEGER');
+  if (!cols('orders').has('phone_hash')) db.exec('ALTER TABLE orders ADD COLUMN phone_hash TEXT'); // blind index for first-order checks
+  db.exec('CREATE INDEX IF NOT EXISTS idx_orders_phone_hash ON orders(phone_hash)');
 }
 
 export function tx(db, fn) {

@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import maplibregl from 'maplibre-gl';
+import * as maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
+// MapLibre v6 runs tile parsing in a separate worker file: let Vite bundle it (with its imports) and point MapLibre at it.
+import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
+
+maplibregl.setWorkerUrl(workerUrl);
 import { pinEl, meEl, MapControls, fitPadding } from './shared.jsx';
 
 // Free vector tiles, no API key. Style includes a 3D building layer ("building-3d").
@@ -31,7 +35,8 @@ export default function Map3D({ stores, selected, onSelect, me, onFail }) {
     map.current = m;
     const timer = setTimeout(() => { if (!loaded) onFail('timeout'); }, LOAD_TIMEOUT_MS);
     m.on('load', () => { loaded = true; clearTimeout(timer); setReady(true); });
-    m.on('error', (e) => { if (!loaded && (e?.error?.status || /webgl/i.test(String(e?.error?.message)))) onFail('error'); });
+    // before the first render any HTTP, WebGL or worker failure means this device/network can't show the 3D map
+    m.on('error', (e) => { if (!loaded && (e?.error?.status || /webgl|worker/i.test(String(e?.error?.message)))) onFail('error'); });
     const canvas = m.getCanvas();
     const lost = (ev) => { ev.preventDefault(); onFail('context-lost'); };
     canvas.addEventListener('webglcontextlost', lost);

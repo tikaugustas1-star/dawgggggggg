@@ -60,7 +60,8 @@ function Ticket({ o, now, fresh, itemsById, onMove }) {
       {o.notes && <div className="notice small">{o.notes}</div>}
       {o.fulfillment === 'delivery' && <div className="row small muted" style={{ gap: 6 }}><span style={{ display: 'flex', width: 16 }}><Icon.pin /></span>{o.address}</div>}
       <div className="row between small"><span className="muted">{eur(o.total)}</span>
-        <span className={`status${o.paymentMethod === 'card' ? '' : ' warn'}`}>{o.paymentMethod === 'card' ? 'Apmokėta' : 'Mokės atsiimant'}</span></div>
+        {o.paymentStatus === 'demo' ? <span className="status bad">DEMO · nesumokėta</span>
+          : <span className={`status${o.paymentStatus === 'paid' ? '' : ' warn'}`}>{o.paymentStatus === 'paid' ? 'Apmokėta' : 'Mokės atsiimant'}</span>}</div>
       <div className="row" style={{ gap: 8 }}>
         {actions.map(([s, label]) => <button key={s} className="btn grow" onClick={() => onMove(o, s)}>{label}</button>)}
         {['placed', 'accepted', 'preparing', 'ready'].includes(o.status) && (

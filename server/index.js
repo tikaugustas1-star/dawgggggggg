@@ -5,7 +5,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { openDb, tx, kvGet, kvSet, loadBrand, ROOT } from './db.js';
 import { seed, seedDeals } from './seed.js';
-import { hashPassword, verifyPassword, createSession, destroySession, sessionMiddleware, requireUser, requireRole, rateLimit } from './auth.js';
+import { hashPassword, verifyPassword, verifyDummy, needsRehash, passwordProblem, createSession, destroySession, clearCookie,
+  sessionMiddleware, requireUser, requireRole, rateLimit, LOCKOUT } from './auth.js';
+import { enc, dec, blind, normEmail, normPhone, encryptLegacyRows } from './crypto.js';
 import { subscribe, publish } from './events.js';
 import { initPayments, mode as paymentMode, createCheckout, verifyStripe, webhookEvent } from './payments.js';
 import { priceLine, evaluatePromo, computeTotals, PricingError } from './algorithms/pricing.js';
@@ -21,16 +23,42 @@ import { activeDealFor, applyDeal, dealState, dealBadge } from './algorithms/dea
 export async function createApp({ db = openDb(), brand = loadBrand() } = {}) {
   seed(db);
   seedDeals(db);
+  encryptLegacyRows(db); // encrypt any plaintext personal data (older versions, synthetic seed history)
   await initPayments();
   const app = express();
   app.set('trust proxy', 1);
+  app.disable('x-powered-by');
   const BASE = process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL || `http://localhost:${process.env.PORT || 3001}`;
   const secureCookies = BASE.startsWith('https');
 
+  // ---------- security headers ----------
+  const originOf = (u) => { try { return new URL(u.replace(/\{s\}/g, 'a').replace(/\{[a-z]+\}/g, '0')).origin; } catch { return ''; } };
+  const tileOrigin = originOf(brand.map?.rasterTiles || 'https://tile.openstreetmap.org/{z}/{x}/{y}.png');
+  const CSP = [
+    "default-src 'self'",
+    "script-src 'self'",
+    "style-src 'self' 'unsafe-inline'", // map libraries position markers with inline styles
+    `img-src 'self' data: blob: https://images.unsplash.com ${tileOrigin}`.trim(),
+    "connect-src 'self' https://tiles.openfreemap.org",
+    "font-src 'self' data:",
+    "worker-src 'self' blob:",
+    "manifest-src 'self'",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+    ...(secureCookies ? ['upgrade-insecure-requests'] : []),
+  ].join('; ');
   app.use((req, res, next) => {
+    res.setHeader('Content-Security-Policy', CSP);
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('Permissions-Policy', 'geolocation=(self), camera=(), microphone=(), payment=(), usb=()');
+    res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+    res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
+    if (secureCookies) res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+    if (req.path.startsWith('/api/')) res.setHeader('Cache-Control', 'no-store'); // personal data must not sit in caches
     next();
   });
 
@@ -46,7 +74,22 @@ export async function createApp({ db = openDb(), brand = loadBrand() } = {}) {
   });
 
   app.use(express.json({ limit: '100kb' }));
-  app.use(sessionMiddleware(db));
+  app.use((err, _req, res, next) => (err ? res.status(400).json({ error: 'Neteisinga užklausa' }) : next())); // malformed JSON
+
+  // CSRF defence in depth (on top of SameSite=Lax): state-changing requests must come from our own origin.
+  app.use('/api', (req, res, next) => {
+    if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
+    const origin = req.headers.origin;
+    if (origin) {
+      try { if (new URL(origin).host === req.headers.host) return next(); } catch { /* invalid origin */ }
+      return res.status(403).json({ error: 'Užklausa atmesta' });
+    }
+    if (req.headers['sec-fetch-site'] === 'cross-site') return res.status(403).json({ error: 'Užklausa atmesta' });
+    next(); // non-browser clients send no Origin; anything sensitive still needs a valid session
+  });
+  app.use('/api', rateLimit({ windowMs: 60000, max: 300, key: (req) => `api:${req.ip}`, message: 'Per daug užklausų, palaukite minutę' }));
+  app.use(sessionMiddleware(db, secureCookies));
+  setInterval(() => db.prepare('DELETE FROM sessions WHERE expires_at < ?').run(Date.now()), 3600000).unref();
 
   // ---------- data helpers ----------
   const q = {
@@ -63,7 +106,7 @@ export async function createApp({ db = openDb(), brand = loadBrand() } = {}) {
     reward: db.prepare('SELECT * FROM rewards WHERE id = ?'),
     userOrderCount: db.prepare(`SELECT COUNT(*) n FROM orders WHERE user_id = ? AND status NOT IN ('cancelled','pending_payment')`),
     deals: db.prepare('SELECT * FROM deals WHERE active = 1'),
-    phoneOrderCount: db.prepare(`SELECT COUNT(*) n FROM orders WHERE customer_phone = ? AND status NOT IN ('cancelled','pending_payment')`),
+    phoneOrderCount: db.prepare(`SELECT COUNT(*) n FROM orders WHERE phone_hash = ? AND status NOT IN ('cancelled','pending_payment')`),
   };
 
   // Public view of an item's deal at `at` (null when none applies).
@@ -173,7 +216,7 @@ export async function createApp({ db = openDb(), brand = loadBrand() } = {}) {
     const deliveryFee = fulfillment === 'delivery' ? store.delivery_fee_cents : 0;
     let promoResult = null;
     if (body.promoCode) {
-      const isFirst = user ? q.userOrderCount.get(user.id).n === 0 : body.phone ? q.phoneOrderCount.get(String(body.phone)).n === 0 : true;
+      const isFirst = user ? q.userOrderCount.get(user.id).n === 0 : body.phone ? q.phoneOrderCount.get(blind('phone', normPhone(body.phone))).n === 0 : true;
       promoResult = evaluatePromo(q.promo.get(String(body.promoCode).trim()), { subtotal, deliveryFee, isFirstOrder: isFirst });
     }
     let reward = null;
@@ -205,8 +248,8 @@ export async function createApp({ db = openDb(), brand = loadBrand() } = {}) {
     const items = q.orderItems.all(o.id).map((i) => ({ ...i, options: JSON.parse(i.options_json) }));
     const events = db.prepare('SELECT status, at FROM order_events WHERE order_id = ? ORDER BY id').all(o.id);
     const s = q.store.get(o.store_id);
-    return { id: o.id, code: o.code, token: o.public_token, status: o.status, fulfillment: o.fulfillment, address: o.address,
-      customerName: o.customer_name, customerPhone: o.customer_phone, notes: o.notes,
+    return { id: o.id, code: o.code, token: o.public_token, status: o.status, fulfillment: o.fulfillment, address: dec(o.address),
+      customerName: dec(o.customer_name), customerPhone: dec(o.customer_phone), notes: dec(o.notes),
       store: { id: s.id, name: s.name, address: s.address, phone: s.phone, lat: s.lat, lng: s.lng },
       subtotal: o.subtotal_cents, discount: o.discount_cents, reward: o.reward_cents, deliveryFee: o.delivery_fee_cents,
       tip: o.tip_cents, total: o.total_cents, promoCode: o.promo_code, pointsEarned: o.points_earned, pointsSpent: o.points_spent,
@@ -237,8 +280,8 @@ export async function createApp({ db = openDb(), brand = loadBrand() } = {}) {
     });
     broadcast(o.id);
   }
-  function markPaidAndPlace(o) {
-    db.prepare(`UPDATE orders SET payment_status = 'paid' WHERE id = ?`).run(o.id);
+  function markPaidAndPlace(o, status = 'paid') {
+    db.prepare('UPDATE orders SET payment_status = ? WHERE id = ?').run(status, o.id);
     try { placeOrder(q.order.get(o.id)); }
     catch (e) {
       // Paid but no longer placeable (points/promo used up meanwhile): cancel and flag the refund instead of leaving it hanging.
@@ -331,7 +374,8 @@ export async function createApp({ db = openDb(), brand = loadBrand() } = {}) {
 
   app.post('/api/cart/quote', wrap((req, res) => res.json(publicQuote(buildQuote(req.body, req.user)))));
 
-  app.post('/api/orders', wrap(async (req, res) => {
+  const orderLimit = rateLimit({ windowMs: 10 * 60000, max: 20, key: (req) => `order:${req.ip}`, message: 'Per daug užsakymų iš šio įrenginio. Palaukite kelias minutes.' });
+  app.post('/api/orders', orderLimit, wrap(async (req, res) => {
     const b = req.body;
     const name = String(b.customerName || req.user?.name || '').trim().slice(0, 80);
     const phone = String(b.phone || req.user?.phone || '').replace(/[^\d+]/g, '').slice(0, 20);
@@ -357,14 +401,16 @@ export async function createApp({ db = openDb(), brand = loadBrand() } = {}) {
             address, lat, lng, notes, status, subtotal_cents, discount_cents, reward_cents, delivery_fee_cents, tip_cents, total_cents,
             promo_code, reward_id, points_earned, points_spent, payment_method, scheduled_for, slot_start, eta_min, eta_max, predicted_prep, created_at)
             VALUES(?,?,?,?,?,?,?,?,?,?,?,'pending_payment',?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
-            code, token, req.user?.id ?? null, name, phone, qt.store.id, qt.fulfillment,
-            qt.fulfillment === 'delivery' ? String(b.address).slice(0, 200) : null,
-            Number.isFinite(b.lat) ? b.lat : null, Number.isFinite(b.lng) ? b.lng : null, String(b.notes || '').slice(0, 300) || null,
+            code, token, req.user?.id ?? null, enc(name), enc(phone), qt.store.id, qt.fulfillment,
+            qt.fulfillment === 'delivery' ? enc(String(b.address).slice(0, 200)) : null,
+            null, null, // coordinates only check the delivery zone; they are never stored
+            enc(String(b.notes || '').slice(0, 300) || null),
             t.subtotal, t.discount, t.rewardCents, t.deliveryFee, t.tip, t.total,
             qt.promo?.ok ? String(b.promoCode).trim().toUpperCase() : null, qt.reward?.id ?? null, req.user ? t.pointsEarned : 0, t.pointsSpent,
             method, b.scheduledFor || null, qt.slot.slot, qt.eta.min, qt.eta.max, qt.eta.kitchen, now).lastInsertRowid);
           const ins = db.prepare('INSERT INTO order_items(order_id, item_id, name, qty, unit_price_cents, options_json, note, line_total_cents) VALUES(?,?,?,?,?,?,?,?)');
           for (const l of qt.lines) ins.run(id, l.itemId, l.name, l.qty, l.unit, JSON.stringify(l.options), l.note || null, l.total);
+          db.prepare('UPDATE orders SET phone_hash = ? WHERE id = ?').run(blind('phone', normPhone(phone)), id);
           addEvent(id, 'pending_payment');
           return id;
         });
@@ -393,8 +439,7 @@ export async function createApp({ db = openDb(), brand = loadBrand() } = {}) {
   app.get('/api/orders/:token/stream', (req, res) => {
     const o = q.orderByToken.get(req.params.token);
     if (!o) return res.status(404).end();
-    subscribe(`order:${o.public_token}`, req, res);
-    res.write(`event: order\ndata: ${JSON.stringify(orderView(o))}\n\n`);
+    if (subscribe(`order:${o.public_token}`, req, res)) res.write(`event: order\ndata: ${JSON.stringify(orderView(o))}\n\n`);
   });
 
   // DEMO card payment: only when Stripe is not configured. No money moves.
@@ -402,7 +447,7 @@ export async function createApp({ db = openDb(), brand = loadBrand() } = {}) {
     if (paymentMode() !== 'demo') return res.status(400).json({ error: 'Demo mokėjimai išjungti' });
     const o = q.orderByToken.get(req.params.token);
     if (!o || o.status !== 'pending_payment') return res.status(400).json({ error: 'Užsakymas jau apmokėtas' });
-    markPaidAndPlace(o);
+    markPaidAndPlace(o, 'demo'); // kitchen sees "DEMO – nesumokėta", never "Apmokėta"
     res.json(orderView(q.order.get(o.id)));
   }));
 
@@ -425,29 +470,49 @@ export async function createApp({ db = openDb(), brand = loadBrand() } = {}) {
 
   // ---------- auth & account ----------
   const authLimit = rateLimit({ max: 10 });
+  const userByEmail = db.prepare('SELECT * FROM users WHERE email = ?'); // `email` column holds the blind index
   app.post('/api/auth/register', authLimit, wrap((req, res) => {
-    const email = String(req.body.email || '').trim().toLowerCase();
+    const email = normEmail(req.body.email);
     const name = String(req.body.name || '').trim().slice(0, 80);
+    const phone = normPhone(req.body.phone).slice(0, 20);
     const pw = String(req.body.password || '');
-    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return res.status(400).json({ error: 'Neteisingas el. paštas' });
+    if (email.length > 254 || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return res.status(400).json({ error: 'Neteisingas el. paštas' });
     if (name.length < 2) return res.status(400).json({ error: 'Įveskite vardą' });
-    if (pw.length < 8) return res.status(400).json({ error: 'Slaptažodis turi būti bent 8 simbolių' });
+    if (phone && phone.length < 8) return res.status(400).json({ error: 'Neteisingas telefono numeris' });
+    const weak = passwordProblem(pw, email);
+    if (weak) return res.status(400).json({ error: weak });
     if (req.body.acceptTerms !== true) return res.status(400).json({ error: 'Pažymėkite, kad susipažinote su taisyklėmis ir privatumo politika' });
-    if (db.prepare('SELECT 1 FROM users WHERE email = ?').get(email)) return res.status(409).json({ error: 'Paskyra jau egzistuoja' });
-    const id = Number(db.prepare('INSERT INTO users(email, name, phone, password_hash, terms_accepted_at) VALUES(?,?,?,?,?)')
-      .run(email, name, String(req.body.phone || '').slice(0, 20) || null, hashPassword(pw), new Date().toISOString()).lastInsertRowid);
+    if (userByEmail.get(blind('email', email))) { verifyDummy(pw); return res.status(409).json({ error: 'Paskyra jau egzistuoja. Prisijunkite.' }); }
+    const id = Number(db.prepare('INSERT INTO users(email, email_enc, name, phone, password_hash, terms_accepted_at) VALUES(?,?,?,?,?,?)')
+      .run(blind('email', email), enc(email), enc(name), enc(phone || null), hashPassword(pw), new Date().toISOString()).lastInsertRowid);
     createSession(db, id, res, secureCookies);
     res.status(201).json({ ok: true });
   }));
 
+  // Login: same message and timing whether or not the email exists; the account locks after repeated failures
+  // (stops guessing spread over many IPs), on top of the per-IP limiter. Old password hashes are upgraded on success.
   app.post('/api/auth/login', authLimit, wrap((req, res) => {
-    const u = db.prepare('SELECT * FROM users WHERE email = ?').get(String(req.body.email || '').trim().toLowerCase());
-    if (!u || !verifyPassword(String(req.body.password || ''), u.password_hash)) return res.status(401).json({ error: 'Neteisingi prisijungimo duomenys' });
+    const pw = String(req.body.password || '').slice(0, 256);
+    const u = userByEmail.get(blind('email', normEmail(req.body.email)));
+    const fail = () => res.status(401).json({ error: 'Neteisingi prisijungimo duomenys' });
+    if (!u) { verifyDummy(pw); return fail(); }
+    if (u.locked_until && u.locked_until > Date.now()) {
+      verifyDummy(pw);
+      return res.status(429).json({ error: `Per daug nesėkmingų bandymų. Paskyra laikinai užrakinta ${LOCKOUT.minutes} min.` });
+    }
+    if (!verifyPassword(pw, u.password_hash)) {
+      const n = (u.failed_logins || 0) + 1;
+      const lock = n >= LOCKOUT.maxFailures;
+      db.prepare('UPDATE users SET failed_logins = ?, locked_until = ? WHERE id = ?').run(lock ? 0 : n, lock ? Date.now() + LOCKOUT.minutes * 60000 : null, u.id);
+      return fail();
+    }
+    db.prepare('UPDATE users SET failed_logins = 0, locked_until = NULL WHERE id = ?').run(u.id);
+    if (needsRehash(u.password_hash)) db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hashPassword(pw), u.id);
     createSession(db, u.id, res, secureCookies);
     res.json({ ok: true, role: u.role });
   }));
 
-  app.post('/api/auth/logout', (req, res) => { destroySession(db, req, res); res.json({ ok: true }); });
+  app.post('/api/auth/logout', (req, res) => { destroySession(db, req, res, secureCookies); res.json({ ok: true }); });
 
   app.get('/api/me', (req, res) => {
     if (!req.user) return res.json({ user: null });
@@ -457,7 +522,9 @@ export async function createApp({ db = openDb(), brand = loadBrand() } = {}) {
 
   // GDPR art. 15/20: everything we hold about the user, as a downloadable JSON file.
   app.get('/api/me/export', requireUser, (req, res) => {
-    const u = db.prepare('SELECT id, email, name, phone, role, points, created_at, terms_accepted_at FROM users WHERE id = ?').get(req.user.id);
+    const r = db.prepare('SELECT id, email_enc, name, phone, role, points, created_at, terms_accepted_at FROM users WHERE id = ?').get(req.user.id);
+    const u = { id: r.id, email: dec(r.email_enc), name: dec(r.name), phone: dec(r.phone), role: r.role, points: r.points,
+      created_at: r.created_at, terms_accepted_at: r.terms_accepted_at };
     const orders = db.prepare('SELECT * FROM orders WHERE user_id = ? ORDER BY created_at').all(req.user.id).map((o) => {
       const v = orderView(o); delete v.token; return v;
     });
@@ -476,12 +543,12 @@ export async function createApp({ db = openDb(), brand = loadBrand() } = {}) {
     if (active) return res.status(409).json({ error: 'Turite vykdomą užsakymą. Paskyrą galėsite ištrinti, kai jis bus įvykdytas.' });
     tx(db, () => {
       db.prepare(`UPDATE order_items SET note = NULL WHERE order_id IN (SELECT id FROM orders WHERE user_id = ?)`).run(u.id);
-      db.prepare(`UPDATE orders SET user_id = NULL, customer_name = 'Ištrinta paskyra', customer_phone = '', address = NULL, lat = NULL, lng = NULL, notes = NULL WHERE user_id = ?`).run(u.id);
+      db.prepare(`UPDATE orders SET user_id = NULL, customer_name = 'Ištrinta paskyra', customer_phone = '', phone_hash = NULL, address = NULL, lat = NULL, lng = NULL, notes = NULL WHERE user_id = ?`).run(u.id);
       db.prepare('DELETE FROM favorites WHERE user_id = ?').run(u.id);
       db.prepare('DELETE FROM sessions WHERE user_id = ?').run(u.id);
       db.prepare('DELETE FROM users WHERE id = ?').run(u.id);
     });
-    res.setHeader('Set-Cookie', 'sid=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0');
+    clearCookie(res, secureCookies);
     res.json({ ok: true });
   }));
 
@@ -533,7 +600,7 @@ export async function createApp({ db = openDb(), brand = loadBrand() } = {}) {
         if (!o.scheduled_for && actual > 0.5 && actual < 180) kvSet(db, `cal:${o.store_id}`, updateCalibration(calibration(o.store_id), actual, o.predicted_prep));
       }
       if (to === 'completed') {
-        db.prepare(`UPDATE orders SET completed_at = ?, payment_status = 'paid' WHERE id = ?`).run(now.toISOString(), o.id);
+        db.prepare(`UPDATE orders SET completed_at = ?, payment_status = CASE WHEN payment_status = 'demo' THEN 'demo' ELSE 'paid' END WHERE id = ?`).run(now.toISOString(), o.id);
         if (o.user_id && o.points_earned) db.prepare('UPDATE users SET points = points + ? WHERE id = ?').run(o.points_earned, o.user_id);
         statsCache = null;
       }
@@ -580,6 +647,7 @@ export async function createApp({ db = openDb(), brand = loadBrand() } = {}) {
     for (const [k, t] of Object.entries(allowed)) if (k in req.body) {
       const v = req.body[k];
       if (t === 'number' && (!Number.isFinite(v) || v < 0)) return res.status(400).json({ error: `Bloga reikšmė: ${k}` });
+      if (k === 'image' && v && !/^https:\/\/[^\s"'<>]+$/.test(String(v))) return res.status(400).json({ error: 'Nuotraukos adresas turi prasidėti https://' });
       sets.push(`${k} = ?`); vals.push(t === 'number' ? v : String(v ?? '').slice(0, 500));
     }
     if (!sets.length) return res.status(400).json({ error: 'Nėra ką keisti' });

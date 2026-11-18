@@ -39,7 +39,7 @@ export function Privacy() {
         <ul>
           <li><b>Paskyra:</b> vardas, el. paštas, telefono numeris (jei nurodote), slaptažodis (saugomas tik kaip kriptografinė maiša, jo nematome), paskyros sukūrimo ir taisyklių priėmimo data.</li>
           <li><b>Užsakymai:</b> užsakyti patiekalai ir pasirinkimai, sumos, nuolaidos, restoranas, atsiėmimo ar pristatymo būdas ir laikas, vardas ir telefonas susisiekimui, pristatymo adresas, pastabos virtuvei ir kurjeriui, užsakymo būsenų istorija.</li>
-          <li><b>Vieta:</b> tik paspaudus „Naudoti mano vietą“ ar „Rasti artimiausią“. Artimiausio restorano paieškai vieta naudojama tik jūsų įrenginyje. Užsakant pristatymą, koordinatės siunčiamos mums, kad patikrintume pristatymo zoną ir apskaičiuotume laiką.</li>
+          <li><b>Vieta:</b> tik paspaudus „Naudoti mano vietą“ ar „Rasti artimiausią“. Artimiausio restorano paieškai vieta naudojama tik jūsų įrenginyje. Užsakant pristatymą, koordinatės siunčiamos mums tik pristatymo zonai patikrinti ir laikui apskaičiuoti. Jų nesaugome.</li>
           <li><b>Mokėjimai:</b> mokant kortele, mokėjimą apdoroja Stripe. Kortelės duomenų mes negauname, matome tik mokėjimo būseną ir sumą.</li>
           <li><b>Lojalumas ir nuostatos:</b> taškų likutis, panaudoti atlygiai, mėgstami patiekalai.</li>
           <li><b>Techniniai duomenys:</b> IP adresas ir užklausų informacija serverio žurnaluose, prisijungimo sesijos identifikatorius.</li>
@@ -71,7 +71,15 @@ export function Privacy() {
         <p>Jei duomenys perduodami už Europos ekonominės erdvės ribų (pvz. JAV paslaugų teikėjams), tai daroma remiantis Europos Komisijos sprendimu dėl tinkamumo (ES ir JAV duomenų privatumo sistema) arba standartinėmis sutarčių sąlygomis.</p>
       </Sec>
 
-      <Sec h="6. Kiek laiko saugome">
+      <Sec h="6. Kaip saugome">
+        <ul>
+          <li>El. paštas, vardas, telefonas, pristatymo adresas ir pastabos duomenų bazėje laikomi <b>užšifruoti</b> (AES-256-GCM). Šifravimo raktas laikomas atskirai nuo duomenų bazės.</li>
+          <li>Slaptažodžiai nesaugomi: saugome tik jų kriptografinę maišą (scrypt), iš kurios slaptažodžio atkurti neįmanoma.</li>
+          <li>Visas ryšys šifruojamas (HTTPS). Taikome prisijungimo bandymų ribojimą ir laikiną paskyros užrakinimą po kelių nesėkmingų bandymų.</li>
+        </ul>
+      </Sec>
+
+      <Sec h="7. Kiek laiko saugome">
         <ul>
           <li><b>Paskyra</b> – kol ją turite. Ištrynus paskyrą, jos duomenys ištrinami iš karto.</li>
           <li><b>Užsakymai ir mokėjimai</b> – 10 metų, kaip reikalauja LR buhalterinės apskaitos įstatymas. Jei paskyra ištrinama, užsakymuose vardas, telefonas, adresas ir pastabos anonimizuojami, lieka tik apskaitai reikalingi duomenys.</li>
@@ -80,26 +88,26 @@ export function Privacy() {
         </ul>
       </Sec>
 
-      <Sec h="7. Slapukai ir naršyklės saugykla">
+      <Sec h="8. Slapukai ir naršyklės saugykla">
         <p>Naudojame tik būtinus įrašus, todėl sutikimo jiems nereikia:</p>
         <ul>
-          <li><code>sid</code> – prisijungimo sesijos slapukas (HttpOnly, galioja iki 30 d.).</li>
+          <li><code>__Host-sid</code> – prisijungimo sesijos slapukas (HttpOnly, galioja iki 30 d.).</li>
           <li>Naršyklės saugykloje (localStorage) jūsų įrenginyje: krepšelis, pasirinktas restoranas ir atsiėmimo būdas, paskutinio užsakymo nuoroda. Kad nereikėtų vesti iš naujo, ten saugomi ir užsakymo kontaktai (vardas, telefonas, adresas); atsijungus jie ištrinami.</li>
         </ul>
         <p>Analitikos ir reklamos slapukų nenaudojame.</p>
       </Sec>
 
-      <Sec h="8. Jūsų teisės">
+      <Sec h="9. Jūsų teisės">
         <p>Turite teisę susipažinti su savo duomenimis, juos ištaisyti, ištrinti, apriboti jų tvarkymą, juos perkelti, nesutikti su tvarkymu teisėto intereso pagrindu ir bet kada atšaukti sutikimą.</p>
         <p>Paskyros puslapyje galite patys <b>atsisiųsti savo duomenis</b> ir <b>ištrinti paskyrą</b>. Kitais atvejais rašykite <a href={`mailto:${L.email}`}>{L.email}</a>, atsakysime per vieną mėnesį.</p>
         <p>Jei manote, kad jūsų duomenys tvarkomi neteisėtai, galite pateikti skundą Valstybinei duomenų apsaugos inspekcijai (L. Sapiegos g. 17, Vilnius, <a href="https://vdai.lrv.lt" target="_blank" rel="noopener noreferrer">vdai.lrv.lt</a>).</p>
       </Sec>
 
-      <Sec h="9. Vaikai">
+      <Sec h="10. Vaikai">
         <p>Paskyrą gali susikurti asmenys nuo 14 metų. Jaunesni gali užsakyti tik su tėvų ar globėjų leidimu.</p>
       </Sec>
 
-      <Sec h="10. Pakeitimai">
+      <Sec h="11. Pakeitimai">
         <p>Pasikeitus duomenų tvarkymui, atnaujinsime šią politiką ir pakeisime atnaujinimo datą. Apie esminius pakeitimus informuosime programėlėje.</p>
       </Sec>
       <p className="small"><Link className="link" to="/terms">Pirkimo–pardavimo taisyklės</Link></p>

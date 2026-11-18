@@ -6,6 +6,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { openDb, tx, ROOT } from './db.js';
 import { hashPassword } from './auth.js';
+import { enc, blind, normEmail, encryptLegacyRows } from './crypto.js';
 import { pathToFileURL } from 'node:url';
 
 const HOURS = {
@@ -144,7 +145,9 @@ export function seed(db, { reset = false } = {}) {
     });
     for (const [a, b] of PAIRS) db.prepare('INSERT INTO pairings VALUES(?,?)').run(itemIds[a], itemIds[b]);
 
-    const insU = db.prepare('INSERT INTO users(email,name,phone,password_hash,role,points) VALUES(?,?,?,?,?,?)');
+    // personal data is stored encrypted; `email` holds only a keyed hash used for login lookups
+    const insU0 = db.prepare('INSERT INTO users(email,email_enc,name,phone,password_hash,role,points) VALUES(?,?,?,?,?,?,?)');
+    const insU = { run: (email, name, phone, hash, role, points) => insU0.run(blind('email', normEmail(email)), enc(normEmail(email)), enc(name), enc(phone), hash, role, points) };
     insU.run(process.env.ADMIN_EMAIL || 'admin@demo.local', 'Administratorius', null, hashPassword(seedPassword('ADMIN_PASSWORD')), 'admin', 0);
     insU.run(process.env.STAFF_EMAIL || 'virtuve@demo.local', 'Virtuvė', null, hashPassword(seedPassword('STAFF_PASSWORD')), 'staff', 0);
     const custId = Number(insU.run(process.env.CUSTOMER_EMAIL || 'klientas@demo.local', 'Demo Klientas', '+370 600 12345', hashPassword(seedPassword('CUSTOMER_PASSWORD')), 'customer', 480).lastInsertRowid);
@@ -200,6 +203,7 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   const db = openDb();
   const done = seed(db, { reset: process.argv.includes('--reset') });
   seedDeals(db);
+  encryptLegacyRows(db);
   console.log(done ? 'Seeded demo brand.' : 'Already seeded (use --reset).');
   if (!fs.existsSync(path.join(ROOT, 'data'))) fs.mkdirSync(path.join(ROOT, 'data'));
 }

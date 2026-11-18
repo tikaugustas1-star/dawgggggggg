@@ -52,9 +52,19 @@ Demo paskyrų prisijungimai yra `.env.example`. **Prieš realų paleidimą juos 
 - Stripe integracija parašyta, bet **neištestuota su tikrais raktais** (jų čia nebuvo).
 
 ## Saugumas
-Kainas, nuolaidas, taškus ir laiko langus visada perskaičiuoja serveris (testas tikrina, kad suklastota kaina ignoruojama).
-Slaptažodžiai saugomi scrypt maišos pavidalu, sesijos laikomos HttpOnly slapukuose, prisijungimui taikomas užklausų ribojimas.
-Virtuvės ir admin API apsaugoti rolėmis.
+Kas įdiegta ir patikrinta testais (`tests/security.test.js` bando atakas):
+- **Asmens duomenys DB užšifruoti** (AES-256-GCM): el. paštas, vardas, telefonas, adresas, pastabos. Paieškai pagal el. paštą ir telefoną naudojamas HMAC „aklasis indeksas“. Pavogtas DB failas be `DATA_ENCRYPTION_KEY` yra nenaudingas. GPS koordinatės nesaugomos.
+  **Raktą saugokite:** jį praradus, užšifruotų duomenų atkurti neįmanoma. Render jį sugeneruoja pats (`render.yaml`).
+- **Slaptažodžiai:** scrypt (N=2¹⁵), druska kiekvienam vartotojui. Seni slaptažodžių hash'ai automatiškai sustiprinami prisijungus. Draudžiami trumpi (<10), dažni ir el. pašto vardą turintys slaptažodžiai.
+- **Prisijungimas:** vienodas atsakymas ir laikas, nesvarbu ar el. paštas egzistuoja. Po 5 nesėkmingų bandymų paskyra užrakinama 15 min. (galioja ir bandant iš skirtingų IP). Papildomai taikomas ribojimas pagal IP.
+- **Sesijos:** atsitiktinis 256 bitų žetonas, DB saugomas tik jo SHA-256. Slapukas `__Host-sid` (HttpOnly, Secure, SameSite=Lax).
+- **CSRF:** be SameSite, keičiančios užklausos priimamos tik iš to paties Origin.
+- **Antraštės:** griežta CSP (be inline/eval skriptų), HSTS, X-Frame-Options DENY, nosniff, Permissions-Policy, COOP/CORP, `Cache-Control: no-store` API atsakymams. Nėra `X-Powered-By`.
+- **Ribojimai:** 300 API užklausų/min. iš vieno IP, 20 užsakymų per 10 min., gyvų ryšių limitai.
+- **Logika:** kainas, nuolaidas, taškus ir laikus skaičiuoja tik serveris. Rolės tikrinamos kiekviename kelyje. Tikrinama užsakymų nuosavybė. Demo mokėjimai virtuvėje rodomi „DEMO · nesumokėta“. Saugu nuo SQL injekcijų (tik paruošti užklausų šablonai). `?next=` peradresavimai leidžiami tik į appso vidų. Nuotraukų adresai priimami tik `https://`.
+- `npm audit`: 0 žinomų pažeidžiamumų.
+
+Ko kodas pats neišsprendžia: reguliarios DB atsarginės kopijos, admin paskyrų dviejų veiksnių autentifikacija (2FA), nepriklausomas įsiskverbimo testas prieš paleidžiant realų verslą.
 
 ## Privatumas ir teisiniai dokumentai
 - `/privacy` (Privatumo politika pagal BDAR) ir `/terms` (Pirkimo–pardavimo taisyklės) generuojami iš `brand.config.json → legal`.

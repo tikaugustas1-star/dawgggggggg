@@ -4,6 +4,7 @@ import { useApp } from '../lib/app.jsx';
 import { useCart } from '../lib/cart.jsx';
 import { api, eur, hhmm, dayLabel } from '../lib/api.js';
 import { NavHead, Photo } from '../components/ui.jsx';
+import { safeNext } from '../lib/safe.js';
 
 const STATUS = { placed: 'Gautas', accepted: 'Patvirtintas', preparing: 'Gaminamas', ready: 'Paruoštas', out_for_delivery: 'Pakeliui', completed: 'Įvykdytas', cancelled: 'Atšauktas' };
 
@@ -22,7 +23,7 @@ export function Account() {
     try {
       const r = await api.post(`/api/auth/${mode}`, f);
       await refreshMe();
-      const next = params.get('next');
+      const next = safeNext(params.get('next'));
       if (r.role === 'staff') nav('/kitchen'); else if (r.role === 'admin') nav(next || '/admin'); else nav(next || '/');
       notify(mode === 'login' ? 'Sveiki sugrįžę!' : 'Paskyra sukurta');
     } catch (e2) { setErr(e2.message); } finally { setBusy(false); }
@@ -95,8 +96,9 @@ export function Account() {
           <label className="field">Telefonas<input className="input" type="tel" autoComplete="tel" value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} /></label>
         </>}
         <label className="field">El. paštas<input className="input" type="email" autoComplete="email" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} required /></label>
-        <label className="field">Slaptažodis<input className="input" type="password" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} minLength={mode === 'register' ? 8 : undefined}
+        <label className="field">Slaptažodis<input className="input" type="password" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} minLength={mode === 'register' ? 10 : undefined} maxLength={128}
           value={f.password} onChange={(e) => setF({ ...f, password: e.target.value })} required /></label>
+        {mode === 'register' && <span className="tiny muted" style={{ marginTop: -14 }}>Bent 10 simbolių. Venkite lengvai atspėjamų slaptažodžių.</span>}
         {mode === 'register' && (
           <label className="consent">
             <input type="checkbox" checked={f.acceptTerms} onChange={(e) => setF({ ...f, acceptTerms: e.target.checked })} required />
