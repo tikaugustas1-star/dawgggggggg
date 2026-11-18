@@ -11,7 +11,7 @@ ENV NODE_ENV=production PORT=10000 DB_PATH=/app/data/app.db
 WORKDIR /app
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/web/dist ./web/dist
-COPY package.json brand.config.json .env.example ./
+COPY package.json brand.config.json ./
 COPY server ./server
 RUN mkdir -p data && chown -R node:node /app
 USER node

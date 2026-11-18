@@ -11,9 +11,13 @@ const NEXT = {
 const LANES = [['Nauji', ['placed']], ['Gaminama', ['accepted', 'preparing']], ['Išduoti', ['ready', 'out_for_delivery']]];
 const STATUS_LT = { accepted: 'Priimta', preparing: 'Gaminama', ready: 'Paruošta', out_for_delivery: 'Pakeliui' };
 
+// One shared AudioContext: browsers cap how many can exist, so a new one per order would go silent.
+let audioCtx = null;
 function beep() {
   try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    audioCtx ??= new (window.AudioContext || window.webkitAudioContext)();
+    const ctx = audioCtx;
+    if (ctx.state === 'suspended') ctx.resume();
     [0, 0.18].forEach((t) => { const o = ctx.createOscillator(); const g = ctx.createGain(); o.frequency.value = 880; o.connect(g); g.connect(ctx.destination);
       g.gain.setValueAtTime(0.25, ctx.currentTime + t); g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + t + 0.15); o.start(ctx.currentTime + t); o.stop(ctx.currentTime + t + 0.16); });
   } catch { /* audio blocked until first interaction */ }
@@ -81,13 +85,21 @@ export default function Kitchen() {
   const store = stores.find((s) => s.id === storeId);
   const staff = me.user && ['staff', 'admin'].includes(me.user.role);
   useEffect(() => setPaused(!!store?.paused), [store]);
+  useEffect(() => { // browsers only allow sound after a user gesture: unlock it on the first tap
+    const unlock = () => { try { audioCtx ??= new (window.AudioContext || window.webkitAudioContext)(); audioCtx.resume(); } catch { /* */ } };
+    window.addEventListener('pointerdown', unlock, { once: true });
+    return () => window.removeEventListener('pointerdown', unlock);
+  }, []);
 
   useEffect(() => {
     if (!staff) return;
     localStorage.setItem('kitchen.store', storeId);
     known.current = new Set();
-    api.get(`/api/kitchen/${storeId}/orders`).then((os) => { os.forEach((o) => known.current.add(o.id)); setOrders(os); }).catch((e) => setErr(e.message));
+    const loadBoard = () => api.get(`/api/kitchen/${storeId}/orders`).then((os) => { os.forEach((o) => known.current.add(o.id)); setOrders(os); }).catch((e) => setErr(e.message));
+    loadBoard();
     const es = new EventSource(`/api/kitchen/${storeId}/stream`);
+    let first = true;
+    es.addEventListener('open', () => { if (!first) loadBoard(); first = false; }); // resync after a dropped connection
     es.addEventListener('order', (e) => {
       const o = JSON.parse(e.data);
       setOrders((prev) => { const i = prev.findIndex((x) => x.id === o.id); if (i < 0) return [...prev, o]; const n = [...prev]; n[i] = o; return n; });

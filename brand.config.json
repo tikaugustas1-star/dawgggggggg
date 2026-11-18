@@ -37,8 +37,17 @@
     15
   ],
   "legal": {
+    "_comment": "Shown in the privacy policy and terms. Replace ALL demo values with the brand's real company details and have a lawyer review the texts.",
+    "template": true,
     "company": "Demo UAB",
-    "vat": "LT000000000"
+    "code": "300000000",
+    "vat": "LT000000000",
+    "address": "Gedimino pr. 9, LT-01103 Vilnius",
+    "email": "privatumas@demo.local",
+    "phone": "+370 600 00001",
+    "hosting": "Render Services, Inc.",
+    "hostingRegion": "pagal paslaugos nustatymus (rekomenduojama ES, Frankfurtas)",
+    "updated": "2026-11-19"
   },
   "map": {
     "_comment": "Flat fallback map (no WebGL). OSM tiles are for low traffic only; for production set a keyed provider (MapTiler, Stadia…).",

@@ -128,6 +128,7 @@ export function migrate(db) {
   const storeCols = cols('stores');
   if (!storeCols.has('image')) db.exec('ALTER TABLE stores ADD COLUMN image TEXT');
   if (!storeCols.has('about')) db.exec('ALTER TABLE stores ADD COLUMN about TEXT');
+  if (!cols('users').has('terms_accepted_at')) db.exec('ALTER TABLE users ADD COLUMN terms_accepted_at TEXT');
 }
 
 export function tx(db, fn) {

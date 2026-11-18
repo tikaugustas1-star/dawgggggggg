@@ -229,7 +229,7 @@ export default function Cart() {
         {quote?.belowMin && <div className="notice bad">Minimali užsakymo suma {eur(quote.minOrder)}</div>}
         {quote && !quote.slot.ok && <div className="notice bad">{quote.slot.reason}</div>}
         {submitErr && <div className="notice bad">{submitErr}</div>}
-        <p className="tiny muted" style={{ textAlign: 'center', margin: 0 }}>Užsakydami sutinkate su {brand?.legal?.company} sąlygomis.</p>
+        <p className="fineprint">Užsakydami sutinkate su <Link to="/terms">Pirkimo–pardavimo taisyklėmis</Link>. Duomenis tvarkome pagal <Link to="/privacy">Privatumo politiką</Link>.</p>
       </div>
 
       <div className="cta on-bg"><div>

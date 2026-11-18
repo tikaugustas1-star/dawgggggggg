@@ -19,6 +19,7 @@
     "stripe": "^17.5.0"
   },
   "devDependencies": {
+    "@fontsource/plus-jakarta-sans": "^5.1.1",
     "@vitejs/plugin-react": "^4.3.4",
     "concurrently": "^9.1.2",
     "leaflet": "^1.9.4",

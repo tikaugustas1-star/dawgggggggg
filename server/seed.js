@@ -145,9 +145,9 @@ export function seed(db, { reset = false } = {}) {
     for (const [a, b] of PAIRS) db.prepare('INSERT INTO pairings VALUES(?,?)').run(itemIds[a], itemIds[b]);
 
     const insU = db.prepare('INSERT INTO users(email,name,phone,password_hash,role,points) VALUES(?,?,?,?,?,?)');
-    insU.run(process.env.ADMIN_EMAIL, 'Administratorius', null, hashPassword(seedPassword('ADMIN_PASSWORD')), 'admin', 0);
-    insU.run(process.env.STAFF_EMAIL, 'Virtuvė', null, hashPassword(seedPassword('STAFF_PASSWORD')), 'staff', 0);
-    const custId = Number(insU.run(process.env.CUSTOMER_EMAIL, 'Demo Klientas', '+370 600 12345', hashPassword(seedPassword('CUSTOMER_PASSWORD')), 'customer', 480).lastInsertRowid);
+    insU.run(process.env.ADMIN_EMAIL || 'admin@demo.local', 'Administratorius', null, hashPassword(seedPassword('ADMIN_PASSWORD')), 'admin', 0);
+    insU.run(process.env.STAFF_EMAIL || 'virtuve@demo.local', 'Virtuvė', null, hashPassword(seedPassword('STAFF_PASSWORD')), 'staff', 0);
+    const custId = Number(insU.run(process.env.CUSTOMER_EMAIL || 'klientas@demo.local', 'Demo Klientas', '+370 600 12345', hashPassword(seedPassword('CUSTOMER_PASSWORD')), 'customer', 480).lastInsertRowid);
 
     const insP = db.prepare('INSERT INTO promos(code,kind,value,min_subtotal_cents,max_uses,first_order_only,label) VALUES(?,?,?,?,?,?,?)');
     insP.run('SVEIKI10', 'percent', 10, 0, null, 1, '−10 % pirmam užsakymui');

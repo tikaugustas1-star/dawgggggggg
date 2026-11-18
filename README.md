@@ -56,6 +56,14 @@ Kainas, nuolaidas, taškus ir laiko langus visada perskaičiuoja serveris (testa
 Slaptažodžiai saugomi scrypt maišos pavidalu, sesijos laikomos HttpOnly slapukuose, prisijungimui taikomas užklausų ribojimas.
 Virtuvės ir admin API apsaugoti rolėmis.
 
+## Privatumas ir teisiniai dokumentai
+- `/privacy` (Privatumo politika pagal BDAR) ir `/terms` (Pirkimo–pardavimo taisyklės) generuojami iš `brand.config.json → legal`.
+  **Prieš paleidžiant realų verslą įrašykite tikrus įmonės duomenis, nustatykite `legal.template: false` ir tekstus patikrinkite su teisininku.**
+- Registruojantis būtina pažymėti, kad susipažinote su taisyklėmis ir privatumo politika (išsaugoma `users.terms_accepted_at`).
+- Paskyroje: „Atsisiųsti mano duomenis“ (JSON) ir „Ištrinti paskyrą“. Ištrinant paskyrą, užsakymai lieka apskaitai, bet vardas, telefonas, adresas ir pastabos anonimizuojami.
+- Šriftas talpinamas pačiame appse (be Google Fonts). Analitikos ir reklamos slapukų nėra, naudojamas tik būtinas sesijos slapukas, todėl slapukų sutikimo juostos nereikia.
+- Render paslaugą rekomenduojama kurti ES regione (`render.yaml` → `region: frankfurt`; esamai paslaugai regiono pakeisti negalima, reikia sukurti naują).
+
 ## Žinomi apribojimai / kas toliau
 - Žemėlapis: jei telefonas palaiko WebGL2, rodomas 3D (MapLibre + OpenFreeMap). Jei ne, arba jei 3D nepavyksta, automatiškai rodomas paprastas žemėlapis (Leaflet), su tais pačiais smeigtukais (`?map=2d` jį įjungia priverstinai).
   Paprasto žemėlapio plytelės pagal nutylėjimą yra OpenStreetMap: jos skirtos tik mažam srautui. Produkcijai nurodykite tiekėją su raktu `brand.config.json → map.rasterTiles`.

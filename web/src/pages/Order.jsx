@@ -13,6 +13,13 @@ const LABEL = {
   out_for_delivery: ['Pakeliui', 'Kurjeris jau veža'],
   completed: ['Įvykdyta', 'Skanaus!'],
 };
+// Android Chrome forbids `new Notification()` in pages; the service worker route works everywhere it exists.
+function notifyReady(body) {
+  const title = 'Užsakymas paruoštas!';
+  if (navigator.serviceWorker?.controller) navigator.serviceWorker.ready.then((r) => r.showNotification(title, { body, tag: 'order-ready' })).catch(() => {});
+  else { try { new Notification(title, { body }); } catch { /* not supported here */ } }
+}
+
 const FLOW = { pickup: ['placed', 'accepted', 'preparing', 'ready', 'completed'], delivery: ['placed', 'accepted', 'preparing', 'ready', 'out_for_delivery', 'completed'] };
 
 export default function Order() {
@@ -26,11 +33,18 @@ export default function Order() {
 
   useEffect(() => {
     const sid = params.get('session_id');
-    api.get(`/api/orders/${token}${sid ? `?session_id=${encodeURIComponent(sid)}` : ''}`).then(setO).catch((e) => setErr(e.message));
-    const es = new EventSource(`/api/orders/${token}/stream`);
-    es.addEventListener('order', (e) => setO(JSON.parse(e.data)));
+    let es = null; let closed = false;
+    const load = () => api.get(`/api/orders/${token}${sid ? `?session_id=${encodeURIComponent(sid)}` : ''}`);
+    load().then((ord) => {
+      if (closed) return;
+      setO(ord);
+      // live updates only for a real order; after a dropped connection, resync what we missed
+      es = new EventSource(`/api/orders/${token}/stream`);
+      es.addEventListener('order', (e) => setO(JSON.parse(e.data)));
+      es.addEventListener('open', () => load().then((x) => !closed && setO(x)).catch(() => {}));
+    }).catch((e) => setErr(e.message));
     const tick = setInterval(() => setNow(Date.now()), 15000);
-    return () => { es.close(); clearInterval(tick); };
+    return () => { closed = true; es?.close(); clearInterval(tick); };
   }, [token, params]);
 
   // clear the cart only once the order is really placed (keeps it if card payment was abandoned)
@@ -43,7 +57,7 @@ export default function Order() {
   useEffect(() => {
     if (o?.status === 'ready' && o.fulfillment === 'pickup') {
       navigator.vibrate?.([200, 100, 200]);
-      if (document.hidden && 'Notification' in window && Notification.permission === 'granted') new Notification('Užsakymas paruoštas!', { body: `${o.code} laukia ${o.store.name}` });
+      if (document.hidden && 'Notification' in window && Notification.permission === 'granted') notifyReady(`${o.code} laukia ${o.store.name}`);
     }
   }, [o?.status]); // eslint-disable-line
 

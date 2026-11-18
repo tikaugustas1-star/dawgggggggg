@@ -12,7 +12,8 @@ export function Account() {
   const nav = useNavigate();
   const [params] = useSearchParams();
   const [mode, setMode] = useState('login');
-  const [f, setF] = useState({ email: '', password: '', name: '', phone: '' });
+  const [f, setF] = useState({ email: '', password: '', name: '', phone: '', acceptTerms: false });
+  const [del, setDel] = useState(null); // null | { password, busy, err }
   const [err, setErr] = useState(null);
   const [busy, setBusy] = useState(false);
 
@@ -26,7 +27,19 @@ export function Account() {
       notify(mode === 'login' ? 'Sveiki sugrįžę!' : 'Paskyra sukurta');
     } catch (e2) { setErr(e2.message); } finally { setBusy(false); }
   }
-  async function logout() { await api.post('/api/auth/logout'); await refreshMe(); notify('Atsijungėte'); }
+  async function deleteAccount(e) {
+    e.preventDefault(); setDel({ ...del, busy: true, err: null });
+    try {
+      await api.post('/api/me/delete', { password: del.password });
+      try { localStorage.removeItem('checkout.v1'); localStorage.removeItem('lastOrderToken'); } catch { /* */ }
+      setDel(null); await refreshMe(); notify('Paskyra ištrinta'); nav('/');
+    } catch (e2) { setDel((d) => ({ ...d, busy: false, err: e2.message })); }
+  }
+  async function logout() {
+    await api.post('/api/auth/logout');
+    try { localStorage.removeItem('checkout.v1'); } catch { /* */ } // don't leave name/phone/address on a shared phone
+    await refreshMe(); notify('Atsijungėte');
+  }
 
   if (me.user) return (
     <><NavHead title="Paskyra" sub={me.user.email} back="/" />
@@ -50,6 +63,25 @@ export function Account() {
           <Link className="btn soft" to="/locations">Kur mus rasti</Link>
           <button className="btn ghost" onClick={logout}>Atsijungti</button>
         </section>
+        <section className="acc" style={{ padding: 18, gap: 10 }}>
+          <b>Privatumas</b>
+          <span className="small muted">Jūsų duomenys tvarkomi pagal <Link className="link" to="/privacy">Privatumo politiką</Link> ir <Link className="link" to="/terms">Pirkimo taisykles</Link>.</span>
+          <a className="btn soft sm" href="/api/me/export" download>Atsisiųsti mano duomenis</a>
+          {!del ? (
+            <button className="btn ghost sm" style={{ color: 'var(--bad)' }} onClick={() => setDel({ password: '', busy: false, err: null })}>Ištrinti paskyrą</button>
+          ) : (
+            <form className="col" style={{ gap: 8 }} onSubmit={deleteAccount}>
+              <span className="small">Paskyra, taškai ir mėgstami bus ištrinti visam laikui. Užsakymai lieka apskaitai, bet be jūsų vardo, telefono ir adreso.</span>
+              <label className="field">Patvirtinkite slaptažodžiu
+                <input className="input" type="password" autoComplete="current-password" value={del.password} onChange={(e) => setDel({ ...del, password: e.target.value })} required /></label>
+              {del.err && <div className="notice bad">{del.err}</div>}
+              <div className="row" style={{ gap: 8 }}>
+                <button type="button" className="btn soft sm grow" onClick={() => setDel(null)}>Atšaukti</button>
+                <button className="btn sm grow" style={{ background: 'var(--bad)' }} disabled={del.busy || !del.password}>Ištrinti visam laikui</button>
+              </div>
+            </form>
+          )}
+        </section>
       </div></>
   );
 
@@ -65,12 +97,22 @@ export function Account() {
         <label className="field">El. paštas<input className="input" type="email" autoComplete="email" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} required /></label>
         <label className="field">Slaptažodis<input className="input" type="password" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} minLength={mode === 'register' ? 8 : undefined}
           value={f.password} onChange={(e) => setF({ ...f, password: e.target.value })} required /></label>
+        {mode === 'register' && (
+          <label className="consent">
+            <input type="checkbox" checked={f.acceptTerms} onChange={(e) => setF({ ...f, acceptTerms: e.target.checked })} required />
+            <span>Susipažinau su <Link to="/terms">Pirkimo–pardavimo taisyklėmis</Link> ir <Link to="/privacy">Privatumo politika</Link>. Man yra bent 14 metų.</span>
+          </label>
+        )}
         {err && <div className="notice bad">{err}</div>}
-        <button className="btn block big" disabled={busy}>{mode === 'login' ? 'Prisijungti' : 'Sukurti paskyrą'}</button>
+        <button className="btn block big" disabled={busy || (mode === 'register' && !f.acceptTerms)}>{mode === 'login' ? 'Prisijungti' : 'Sukurti paskyrą'}</button>
+        {mode === 'login' && (
+          <p className="fineprint">Prisijungdami patvirtinate, kad susipažinote su <Link to="/terms">Taisyklėmis</Link> ir <Link to="/privacy">Privatumo politika</Link>.</p>
+        )}
         <Link className="btn soft block" to="/locations">Kur mus rasti</Link>
         <div className="acc small" style={{ padding: 18 }}><b>Kodėl verta?</b>
           <span>{brand?.loyalty?.pointsPerEuro} tšk. už kiekvieną eurą</span><span>Užsakymo kartojimas vienu paspaudimu</span><span>Mėgstami patiekalai ir asmeniniai pasiūlymai</span></div>
-        <p className="small muted" style={{ textAlign: 'center' }}>Galite užsakyti ir be paskyros.</p>
+        <p className="small muted" style={{ textAlign: 'center', margin: 0 }}>Galite užsakyti ir be paskyros.</p>
+        <p className="fineprint"><Link to="/privacy">Privatumo politika</Link> · <Link to="/terms">Pirkimo taisyklės</Link></p>
       </form></>
   );
 }

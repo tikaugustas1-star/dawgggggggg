@@ -432,9 +432,10 @@ export async function createApp({ db = openDb(), brand = loadBrand() } = {}) {
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return res.status(400).json({ error: 'Neteisingas el. paštas' });
     if (name.length < 2) return res.status(400).json({ error: 'Įveskite vardą' });
     if (pw.length < 8) return res.status(400).json({ error: 'Slaptažodis turi būti bent 8 simbolių' });
+    if (req.body.acceptTerms !== true) return res.status(400).json({ error: 'Pažymėkite, kad susipažinote su taisyklėmis ir privatumo politika' });
     if (db.prepare('SELECT 1 FROM users WHERE email = ?').get(email)) return res.status(409).json({ error: 'Paskyra jau egzistuoja' });
-    const id = Number(db.prepare('INSERT INTO users(email, name, phone, password_hash) VALUES(?,?,?,?)')
-      .run(email, name, String(req.body.phone || '').slice(0, 20) || null, hashPassword(pw)).lastInsertRowid);
+    const id = Number(db.prepare('INSERT INTO users(email, name, phone, password_hash, terms_accepted_at) VALUES(?,?,?,?,?)')
+      .run(email, name, String(req.body.phone || '').slice(0, 20) || null, hashPassword(pw), new Date().toISOString()).lastInsertRowid);
     createSession(db, id, res, secureCookies);
     res.status(201).json({ ok: true });
   }));
@@ -453,6 +454,36 @@ export async function createApp({ db = openDb(), brand = loadBrand() } = {}) {
     const favs = db.prepare('SELECT item_id FROM favorites WHERE user_id = ?').all(req.user.id).map((r) => r.item_id);
     res.json({ user: req.user, favorites: favs, rewards: db.prepare('SELECT * FROM rewards ORDER BY cost_points').all() });
   });
+
+  // GDPR art. 15/20: everything we hold about the user, as a downloadable JSON file.
+  app.get('/api/me/export', requireUser, (req, res) => {
+    const u = db.prepare('SELECT id, email, name, phone, role, points, created_at, terms_accepted_at FROM users WHERE id = ?').get(req.user.id);
+    const orders = db.prepare('SELECT * FROM orders WHERE user_id = ? ORDER BY created_at').all(req.user.id).map((o) => {
+      const v = orderView(o); delete v.token; return v;
+    });
+    const favorites = db.prepare('SELECT i.name FROM favorites f JOIN items i ON i.id = f.item_id WHERE f.user_id = ?').all(req.user.id).map((r) => r.name);
+    res.setHeader('Content-Disposition', `attachment; filename="mano-duomenys-${new Date().toISOString().slice(0, 10)}.json"`);
+    res.json({ exportedAt: new Date().toISOString(), controller: brand.legal?.company, account: u, favorites, orders,
+      browserStorage: 'Krepšelis, kontaktai ir nustatymai saugomi tik jūsų įrenginio naršyklėje.' });
+  });
+
+  // GDPR art. 17: delete the account. Orders stay for accounting (10 y) but lose all contact details.
+  app.post('/api/me/delete', requireUser, authLimit, wrap((req, res) => {
+    const u = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
+    if (!verifyPassword(String(req.body.password || ''), u.password_hash)) return res.status(401).json({ error: 'Neteisingas slaptažodis' });
+    if (u.role !== 'customer') return res.status(400).json({ error: 'Darbuotojų paskyras šalina administratorius' });
+    const active = db.prepare(`SELECT COUNT(*) n FROM orders WHERE user_id = ? AND status IN ('pending_payment','placed','accepted','preparing','ready','out_for_delivery')`).get(u.id).n;
+    if (active) return res.status(409).json({ error: 'Turite vykdomą užsakymą. Paskyrą galėsite ištrinti, kai jis bus įvykdytas.' });
+    tx(db, () => {
+      db.prepare(`UPDATE order_items SET note = NULL WHERE order_id IN (SELECT id FROM orders WHERE user_id = ?)`).run(u.id);
+      db.prepare(`UPDATE orders SET user_id = NULL, customer_name = 'Ištrinta paskyra', customer_phone = '', address = NULL, lat = NULL, lng = NULL, notes = NULL WHERE user_id = ?`).run(u.id);
+      db.prepare('DELETE FROM favorites WHERE user_id = ?').run(u.id);
+      db.prepare('DELETE FROM sessions WHERE user_id = ?').run(u.id);
+      db.prepare('DELETE FROM users WHERE id = ?').run(u.id);
+    });
+    res.setHeader('Set-Cookie', 'sid=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0');
+    res.json({ ok: true });
+  }));
 
   app.post('/api/me/favorites/:itemId', requireUser, (req, res) => {
     const id = Number(req.params.itemId);

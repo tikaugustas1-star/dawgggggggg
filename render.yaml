@@ -4,6 +4,8 @@ services:
     name: food-order-app
     runtime: docker
     plan: free
+    # region: frankfurt  # EU hosting for GDPR. Region can't change on an existing service: create a NEW Blueprint
+    #                    # with this line enabled, then delete the old (Oregon) service.
     healthCheckPath: /api/health
     autoDeploy: true   # redeploy on every push to main
     envVars:
