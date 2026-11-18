@@ -67,6 +67,7 @@ export function Account() {
           value={f.password} onChange={(e) => setF({ ...f, password: e.target.value })} required /></label>
         {err && <div className="notice bad">{err}</div>}
         <button className="btn block big" disabled={busy}>{mode === 'login' ? 'Prisijungti' : 'Sukurti paskyrą'}</button>
+        <Link className="btn soft block" to="/locations">Kur mus rasti</Link>
         <div className="acc small" style={{ padding: 18 }}><b>Kodėl verta?</b>
           <span>{brand?.loyalty?.pointsPerEuro} tšk. už kiekvieną eurą</span><span>Užsakymo kartojimas vienu paspaudimu</span><span>Mėgstami patiekalai ir asmeniniai pasiūlymai</span></div>
         <p className="small muted" style={{ textAlign: 'center' }}>Galite užsakyti ir be paskyros.</p>
