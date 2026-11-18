@@ -5,6 +5,7 @@ services:
     runtime: docker
     plan: free
     healthCheckPath: /api/health
+    autoDeploy: true   # redeploy on every push to main
     envVars:
       - key: NODE_ENV
         value: production
