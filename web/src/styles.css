@@ -304,3 +304,13 @@ label.field .input { color: var(--ink); }
 .hours { display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; font-size: 13px; }
 .hours .today { font-weight: 700; }
 .maplibregl-ctrl-attrib { font-size: 10px !important; border-radius: 999px 0 0 0 !important; }
+/* flat (Leaflet) map fallback */
+.mapcard .leaflet-container { background: #EDE7DF; font-family: var(--font-body); }
+.mapcard .leaflet-tile-pane { filter: saturate(.5) brightness(1.04) contrast(.92); } /* muted, matches the monochrome design */
+.lf-icon { background: none !important; border: 0 !important; }
+.lf-anchor { position: absolute; transform: translate(-50%, -100%); }
+.lf-me .me-dot { width: 18px; height: 18px; }
+.mapcard .leaflet-control-attribution { font-size: 10px; border-radius: 999px 0 0 0; background: rgba(255,255,255,.8); }
+.map-note { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 2; background: rgba(35,35,35,.85); color: #fff; font-size: 11px;
+  padding: 4px 10px; border-radius: 999px; pointer-events: none; white-space: nowrap; }
+.mapcard .map-ctrls, .mapcard .map-bottom { z-index: 500; } /* above Leaflet panes */

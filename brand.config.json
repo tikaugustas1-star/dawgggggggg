@@ -21,8 +21,29 @@
     "fontDisplay": "'Plus Jakarta Sans', system-ui, sans-serif",
     "fontBody": "'Plus Jakarta Sans', system-ui, sans-serif"
   },
-  "loyalty": { "pointsPerEuro": 10, "name": "Šilta taškai" },
-  "delivery": { "enabled": true, "speedKmPerMin": 0.4, "handoffMin": 5 },
-  "tipsPercent": [0, 5, 10, 15],
-  "legal": { "company": "Demo UAB", "vat": "LT000000000" }
+  "loyalty": {
+    "pointsPerEuro": 10,
+    "name": "Šilta taškai"
+  },
+  "delivery": {
+    "enabled": true,
+    "speedKmPerMin": 0.4,
+    "handoffMin": 5
+  },
+  "tipsPercent": [
+    0,
+    5,
+    10,
+    15
+  ],
+  "legal": {
+    "company": "Demo UAB",
+    "vat": "LT000000000"
+  },
+  "map": {
+    "_comment": "Flat fallback map (no WebGL). OSM tiles are for low traffic only; for production set a keyed provider (MapTiler, Stadia…).",
+    "rasterTiles": "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+    "rasterAttribution": "© <a href=\"https://www.openstreetmap.org/copyright\">OpenStreetMap</a>",
+    "rasterMaxZoom": 19
+  }
 }

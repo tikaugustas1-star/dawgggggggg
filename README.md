@@ -57,7 +57,8 @@ Slaptažodžiai saugomi scrypt maišos pavidalu, sesijos laikomos HttpOnly slapu
 Virtuvės ir admin API apsaugoti rolėmis.
 
 ## Žinomi apribojimai / kas toliau
-- Žemėlapio plytelės kraunamos iš OpenFreeMap (nemokama, be rakto). Didelei apkrovai verta turėti savo plytelių serverį arba mokamą tiekėją.
+- Žemėlapis: jei telefonas palaiko WebGL2, rodomas 3D (MapLibre + OpenFreeMap). Jei ne, arba jei 3D nepavyksta, automatiškai rodomas paprastas žemėlapis (Leaflet), su tais pačiais smeigtukais (`?map=2d` jį įjungia priverstinai).
+  Paprasto žemėlapio plytelės pagal nutylėjimą yra OpenStreetMap: jos skirtos tik mažam srautui. Produkcijai nurodykite tiekėją su raktu `brand.config.json → map.rasterTiles`.
 - Pristatymo zona tikrinama tik tada, kai klientas paspaudžia „Naudoti mano vietą“. Adreso geokodavimo nėra (reikėtų Google/Mapbox rakto).
 - Kurjerių valdymo / maršrutų nėra: statusą „Išvežta“ žymi restoranas (tinka savo kurjeriams).
 - Push pranešimai veikia tik naršyklėje, kol sekimo puslapis atidarytas (Notification API). Pilnam Web Push reikia VAPID raktų.
