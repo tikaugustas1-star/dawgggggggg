@@ -1,0 +1,30 @@
+{
+  "name": "food-order-whitelabel",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "White-label PWA food ordering app for restaurant brands",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "dev": "concurrently -k -n api,web \"node --watch server/index.js\" \"vite --config web/vite.config.js\"",
+    "build": "vite build --config web/vite.config.js",
+    "start": "node server/index.js",
+    "seed": "node server/seed.js --reset",
+    "test": "node --test tests/*.test.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "stripe": "^17.5.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^9.1.2",
+    "maplibre-gl": "^4.7.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.28.1",
+    "vite": "^6.0.7"
+  }
+}

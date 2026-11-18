@@ -1,0 +1,9 @@
+{
+  "name": "Šilta — užsakyk maistą",
+  "short_name": "Šilta",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#FFFFFF",
+  "theme_color": "#FFFFFF",
+  "icons": [{ "src": "/icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}

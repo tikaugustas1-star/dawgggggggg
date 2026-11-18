@@ -1,0 +1,24 @@
+# Render Blueprint: one-click deploy (render.com → New → Blueprint, or the button in README).
+services:
+  - type: web
+    name: food-order-app
+    runtime: docker
+    plan: free
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PAYMENTS_DEMO
+        value: "1"
+      - key: ADMIN_EMAIL
+        value: admin@demo.local
+      - key: ADMIN_PASSWORD
+        generateValue: true
+      - key: STAFF_EMAIL
+        value: virtuve@demo.local
+      - key: STAFF_PASSWORD
+        generateValue: true
+      - key: CUSTOMER_EMAIL
+        value: klientas@demo.local
+      - key: CUSTOMER_PASSWORD
+        generateValue: true

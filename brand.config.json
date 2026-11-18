@@ -1,0 +1,28 @@
+{
+  "_comment": "White-label: copy this file per brand (or set BRAND_CONFIG=path). Fictional demo brand.",
+  "id": "silta",
+  "name": "Šilta",
+  "tagline": "Burgeriai ir bowl'ai, kurie nelaukia",
+  "currency": "EUR",
+  "locale": "lt-LT",
+  "logoText": "ŠILTA",
+  "logoUrl": null,
+  "theme": {
+    "primary": "#1F1F1F",
+    "primaryInk": "#FFFFFF",
+    "accent": "#E2462B",
+    "bg": "#FFFFFF",
+    "surface": "#FFFFFF",
+    "soft": "#EDEDEC",
+    "ink": "#1A1A1A",
+    "muted": "#8C8C8C",
+    "line": "#E6E6E5",
+    "radius": "28px",
+    "fontDisplay": "'Plus Jakarta Sans', system-ui, sans-serif",
+    "fontBody": "'Plus Jakarta Sans', system-ui, sans-serif"
+  },
+  "loyalty": { "pointsPerEuro": 10, "name": "Šilta taškai" },
+  "delivery": { "enabled": true, "speedKmPerMin": 0.4, "handoffMin": 5 },
+  "tipsPercent": [0, 5, 10, 15],
+  "legal": { "company": "Demo UAB", "vat": "LT000000000" }
+}
